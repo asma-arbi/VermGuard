@@ -1,0 +1,386 @@
+/* =============================================
+   Auth Page — Login / Sign Up
+   ============================================= */
+
+.auth-container {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(160deg, #1a1040 0%, #3d2875 40%, #2e1a50 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Animated background orbs ── */
+.auth-decoration {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.circle {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+
+.circle-1 {
+  width: 550px;
+  height: 550px;
+  top: -150px;
+  right: -80px;
+  background: radial-gradient(circle, rgba(193,39,45,0.55) 0%, rgba(144,27,64,0.3) 60%, transparent 100%);
+  animation: orb 12s ease-in-out infinite alternate;
+}
+
+.circle-2 {
+  width: 450px;
+  height: 450px;
+  bottom: -120px;
+  left: -100px;
+  background: radial-gradient(circle, rgba(123,31,162,0.6) 0%, rgba(74,20,140,0.3) 60%, transparent 100%);
+  animation: orb 15s ease-in-out infinite alternate-reverse;
+}
+
+.circle-3 {
+  width: 280px;
+  height: 280px;
+  top: 50%;
+  left: 30%;
+  background: radial-gradient(circle, rgba(193,39,45,0.2) 0%, transparent 70%);
+  animation: orb 8s ease-in-out infinite alternate;
+}
+
+@keyframes orb {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(20px, -20px) scale(1.08); }
+  100% { transform: translate(-10px, 15px) scale(0.95); }
+}
+
+/* ── Card ── */
+.auth-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  margin: 1rem;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  padding: 2.5rem;
+  box-shadow:
+    0 24px 64px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  animation: cardIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(40px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+/* ── Header ── */
+.auth-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 1.75rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+  margin-bottom: 1.5rem;
+}
+
+.slash {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  opacity: 0.6;
+  font-weight: 300;
+}
+
+.logo-text {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.auth-header h2 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 0.4rem;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.9rem;
+}
+
+/* ── Error alert ── */
+.alert-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+/* ── Form ── */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.85rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.07);
+  color: white;
+  transition: all 0.25s ease;
+}
+
+.form-group input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: rgba(123, 31, 162, 0.8);
+  background: rgba(123, 31, 162, 0.1);
+  box-shadow: 0 0 0 4px rgba(123, 31, 162, 0.15);
+}
+
+/* ── Role Dropdown (premium) ── */
+.role-select-wrapper {
+  position: relative;
+}
+
+.role-select-wrapper::after {
+  content: '▾';
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255,255,255,0.5);
+  pointer-events: none;
+  font-size: 0.9rem;
+}
+
+.role-select {
+  width: 100%;
+  padding: 0.85rem 2.5rem 0.85rem 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(255, 255, 255, 0.07);
+  color: white;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.role-select:focus {
+  outline: none;
+  border-color: rgba(123, 31, 162, 0.8);
+  background: rgba(123, 31, 162, 0.12);
+  box-shadow: 0 0 0 4px rgba(123, 31, 162, 0.15);
+}
+
+.role-select option {
+  background: #302b63;
+  color: white;
+  font-weight: 500;
+}
+
+/* Role chips below the select */
+.role-chips {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.role-chip {
+  flex: 1;
+  padding: 0.4rem 0;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.5px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.role-chip.soc {
+  background: rgba(193,39,45,0.12);
+  color: #fca5a5;
+  border-color: rgba(193,39,45,0.3);
+}
+
+.role-chip.support {
+  background: rgba(123,31,162,0.12);
+  color: #c084fc;
+  border-color: rgba(123,31,162,0.3);
+}
+
+.role-chip.manager {
+  background: rgba(234, 179, 8, 0.12);
+  color: #fde047;
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+.role-chip.active.soc {
+  background: rgba(193,39,45,0.3);
+  border-color: #C1272D;
+  color: white;
+}
+
+.role-chip.active.support {
+  background: rgba(123,31,162,0.3);
+  border-color: #7B1FA2;
+  color: white;
+}
+
+.role-chip.active.manager {
+  background: rgba(234, 179, 8, 0.3);
+  border-color: #eab308;
+  color: white;
+}
+
+/* ── Submit Button ── */
+.btn-primary {
+  width: 100%;
+  background: var(--brand-gradient);
+  color: white;
+  border: none;
+  padding: 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  letter-spacing: 0.3px;
+  box-shadow: 0 6px 20px rgba(123, 31, 162, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 52px;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-primary:hover::before { left: 100%; }
+
+.btn-primary:hover:not([disabled]) {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(123, 31, 162, 0.5);
+}
+
+.btn-primary[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.loader {
+  width: 20px;
+  height: 20px;
+  border: 3px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  border-top-color: white;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Footer ── */
+.auth-footer {
+  margin-top: 1.75rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.auth-footer a {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-decoration: none;
+  font-weight: 700;
+  transition: opacity 0.2s;
+}
+
+.auth-footer a:hover { opacity: 0.8; }
+
+/* ── Mode toggle tabs ── */
+.mode-tabs {
+  display: flex;
+  background: rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 1.75rem;
+  gap: 4px;
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 0.6rem;
+  border: none;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  color: rgba(255,255,255,0.45);
+  background: transparent;
+}
+
+.mode-tab.active {
+  background: var(--brand-gradient);
+  color: white;
+  box-shadow: 0 4px 12px rgba(123,31,162,0.4);
+}

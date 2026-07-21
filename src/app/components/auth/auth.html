@@ -1,0 +1,98 @@
+<div class="auth-container">
+
+  <!-- Animated background orbs -->
+  <div class="auth-decoration">
+    <div class="circle circle-1"></div>
+    <div class="circle circle-2"></div>
+    <div class="circle circle-3"></div>
+  </div>
+
+  <div class="auth-card">
+
+    <!-- Logo -->
+    <div class="auth-header">
+      <div class="logo">
+        <span class="slash">/</span><span class="logo-text">vermguard</span>
+      </div>
+      <h2>{{ isLoginMode ? 'Welcome back' : 'Create account' }}</h2>
+      <p class="subtitle">{{ isLoginMode ? 'Sign in to your workspace' : 'Join the VermGuard platform' }}</p>
+    </div>
+
+    <!-- Mode Tabs -->
+    <div class="mode-tabs">
+      <button class="mode-tab" [class.active]="isLoginMode" (click)="setMode(true)">Login</button>
+      <button class="mode-tab" [class.active]="!isLoginMode" (click)="setMode(false)">Sign Up</button>
+    </div>
+
+    <!-- Error -->
+    <div class="alert-danger" *ngIf="errorMessage">
+      ⚠️ {{ errorMessage }}
+    </div>
+
+    <!-- Form -->
+    <form class="auth-form" (ngSubmit)="onSubmit()" #authForm="ngForm">
+
+      <ng-container *ngIf="!isLoginMode">
+        <div class="form-group">
+          <label>First Name</label>
+          <input type="text" name="firstName" [(ngModel)]="formData.firstName" required placeholder="John">
+        </div>
+        <div class="form-group">
+          <label>Last Name</label>
+          <input type="text" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Doe">
+        </div>
+      </ng-container>
+
+      <div class="form-group">
+        <label>Professional Email</label>
+        <input type="email" name="email" [(ngModel)]="formData.email" required placeholder="name@vermeg.com">
+      </div>
+
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" name="password" [(ngModel)]="formData.password" required placeholder="••••••••">
+      </div>
+
+      <!-- Role selector — Sign Up only -->
+      <div class="form-group" *ngIf="!isLoginMode">
+        <label>Role</label>
+        <div class="role-chips">
+          <button type="button"
+            class="role-chip manager"
+            [class.active]="formData.role === 'manager'"
+            (click)="formData.role = 'manager'">
+            👑 Manager
+          </button>
+          <button type="button"
+            class="role-chip soc"
+            [class.active]="formData.role === 'soc'"
+            (click)="formData.role = 'soc'">
+            🔵 SOC
+          </button>
+          <button type="button"
+            class="role-chip support"
+            [class.active]="formData.role === 'support'"
+            (click)="formData.role = 'support'">
+            🟣 Support
+          </button>
+        </div>
+      </div>
+
+      <button type="submit" class="btn-primary" [disabled]="!authForm.valid || isLoading">
+        <span *ngIf="!isLoading">{{ isLoginMode ? '→ Login' : '✓ Create Account' }}</span>
+        <span *ngIf="isLoading" class="loader"></span>
+      </button>
+
+    </form>
+
+    <div class="auth-footer">
+      <p>
+        {{ isLoginMode ? "Don't have an account?" : "Already have an account?" }}
+        <a href="javascript:void(0)" (click)="setMode(!isLoginMode)">
+          {{ isLoginMode ? "Sign Up" : "Login" }}
+        </a>
+      </p>
+    </div>
+
+  </div>
+</div>

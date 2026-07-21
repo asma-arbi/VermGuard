@@ -1,0 +1,507 @@
+<div class="dashboard-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo-area">
+      <span class="slash">/</span><span class="logo-text">vermguard</span>
+    </div>
+    
+    <nav class="nav-menu">
+      <a class="nav-item" 
+         [class.active]="currentScreen === 'directory'" 
+         (click)="showDirectory()"
+         style="cursor: pointer;">
+        <i class="icon">👥</i> Staff Directory
+      </a>
+      <a class="nav-item" 
+         [class.active]="currentScreen === 'tickets'" 
+         (click)="showTickets()"
+         style="cursor: pointer;">
+        <i class="icon">🎫</i> Jira Tickets
+      </a>
+      <a class="nav-item" 
+         [class.active]="currentScreen === 'notifications'" 
+         (click)="showNotifications()"
+         style="cursor: pointer;">
+        <i class="icon">🔔</i> Notifications
+        <span class="nav-badge" *ngIf="notificationHistory.length > 0">{{ notificationHistory.length }}</span>
+      </a>
+
+      <!-- SOC Members: visible pour manager et soc, caché pour support -->
+      <a class="nav-item" 
+         *ngIf="activeRole === 'manager' || activeRole === 'soc'"
+         [class.active]="currentScreen === 'soc-members'" 
+         (click)="showSocMembers()"
+         style="cursor: pointer;">
+        <i class="icon">👨‍💻</i> SOC Members
+      </a>
+      
+      <!-- Audit log réservé au Manager -->
+      <a class="nav-item" 
+         *ngIf="activeRole === 'manager'"
+         [class.active]="currentScreen === 'audit'" 
+         (click)="showAudit()"
+         style="cursor: pointer;">
+        <i class="icon">🛡️</i> Audit Log
+      </a>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="welcome-text">
+        Hello, <strong>{{ loggedUserName }}</strong>
+      </div>
+      
+      <div class="topbar-actions">
+        <span class="role-badge-topbar" [ngClass]="'badge-' + activeRole">{{ activeRole | uppercase }}</span>
+        <button class="btn-logout" (click)="logout()">← Logout</button>
+      </div>
+    </header>
+
+    <!-- Content Body -->
+    <div class="content-body">
+
+      <!-- ── SECTION 1 : DIRECTORY (USERS) ── -->
+      <div *ngIf="currentScreen === 'directory'" class="fade-in">
+        <div class="header-section">
+          <h2>Staff Directory</h2>
+          <p class="subtitle">Access Management and Operations Registry (SOC & Support)</p>
+        </div>
+
+        <!-- Alerts -->
+        <div class="alert alert-success" *ngIf="successMessage">
+          {{ successMessage }}
+        </div>
+        <div class="alert alert-danger" *ngIf="errorMessage">
+          {{ errorMessage }}
+        </div>
+
+        <!-- Stats & Filters Row -->
+        <div class="controls-row">
+          <div class="stats">
+            <div class="stat-card">
+              <span class="stat-value">{{ getTotalUsers() }}</span>
+              <span class="stat-label">Total Staff</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value">{{ getTotalOpenTickets() }}</span>
+              <span class="stat-label">Active Tickets</span>
+            </div>
+          </div>
+
+          <div class="actions">
+            <div class="directory-search">
+              <input type="text" 
+                     placeholder="Search staff..." 
+                     [(ngModel)]="directorySearchQuery" 
+                     (ngModelChange)="applyFilters()" 
+                     class="directory-search-input">
+            </div>
+
+            <button class="btn-secondary" (click)="exportDirectoryToCsv()" style="margin-right: 0.5rem;">
+              📥 Export CSV
+            </button>
+
+            <div class="filter-group" style="margin-right: 0.5rem;">
+              <button class="btn-filter" [class.active]="selectedRoleFilter === 'all'" (click)="setRoleFilter('all')">All</button>
+              <button class="btn-filter" [class.active]="selectedRoleFilter === 'soc'" (click)="setRoleFilter('soc')">SOC</button>
+              <button class="btn-filter" [class.active]="selectedRoleFilter === 'support'" (click)="setRoleFilter('support')">Support</button>
+            </div>
+            
+            <button class="btn-primary" *ngIf="canUserAdd()" (click)="openAddModal()">+ New User</button>
+          </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>First Name</th>
+                <th>Last Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Open Tickets</th>
+                <th>Can Add User</th>
+                <th class="text-right" *ngIf="activeRole === 'manager'">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngIf="filteredUsers.length === 0">
+                <td [colSpan]="activeRole === 'manager' ? 7 : 6" class="text-center empty-state">No staff members found.</td>
+              </tr>
+              <tr *ngFor="let user of filteredUsers">
+                <td class="font-medium">{{ user.firstName }}</td>
+                <td class="font-medium">{{ user.lastName }}</td>
+                <td>{{ user.email || '-' }}</td>
+                <td>
+                  <span class="role-badge" [ngClass]="'role-' + user.role">{{ user.role | uppercase }}</span>
+                </td>
+                <td>
+                  <span class="ticket-count" [class.high]="user.openTicketsCount && user.openTicketsCount > 5">
+                    {{ user.openTicketsCount || 0 }}
+                  </span>
+                </td>
+                <td>
+                  <input type="checkbox" 
+                         [checked]="user.canAddUser" 
+                         [disabled]="activeRole !== 'manager' || user.role === 'manager'" 
+                         (change)="toggleAddUserPermission(user)"
+                         style="width: 18px; height: 18px; cursor: pointer;">
+                </td>
+                <td class="text-right" *ngIf="activeRole === 'manager'">
+                  <button class="btn-icon btn-edit" (click)="openEditModal(user)" title="Edit">✏️</button>
+                  <button class="btn-icon btn-delete" (click)="deleteUser(user)" title="Delete">🗑️</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SECTION 2 : JIRA TICKETS ── -->
+      <div *ngIf="currentScreen === 'tickets'" class="fade-in">
+        <app-jira-tickets></app-jira-tickets>
+      </div>
+
+      <!-- ── SECTION 3 : AUDIT LOG (Manager only) ── -->
+      <div *ngIf="currentScreen === 'audit'" class="fade-in">
+        <app-audit></app-audit>
+      </div>
+
+      <!-- ── SECTION 4 : NOTIFICATIONS ── -->
+      <div *ngIf="currentScreen === 'notifications'" class="fade-in">
+        <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+          <div>
+            <h2>🔔 Session Alerts History</h2>
+            <p class="subtitle">Log of live WebSocket notifications received during this session</p>
+          </div>
+          <button class="btn-secondary" (click)="clearNotifications()" *ngIf="notificationHistory.length > 0">
+            🗑️ Clear History
+          </button>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 120px;">Time</th>
+                <th style="width: 140px;">Ticket Key</th>
+                <th>Alert Description</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngIf="notificationHistory.length === 0">
+                <td colspan="3" class="text-center empty-state">No real-time notifications received since you logged in.</td>
+              </tr>
+              <tr *ngFor="let note of notificationHistory">
+                <td style="color: var(--text-muted); font-size: 0.85rem;">{{ note.timestamp | date:'mediumTime' }}</td>
+                <td>
+                  <a [href]="'https://jira.vermeg.com/browse/' + note.key" target="_blank" style="text-decoration: none;">
+                    <span class="role-badge" style="background: rgba(123, 31, 162, 0.1); color: #7B1FA2; border: 1px solid rgba(123, 31, 162, 0.3); font-weight: 700; font-family: monospace; cursor: pointer; display: inline-block; transition: all 0.2s;">
+                      🔗 {{ note.key }}
+                    </span>
+                  </a>
+                </td>
+                <td class="font-medium" style="color: var(--text-dark); font-size: 0.9rem;">{{ note.message }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── SECTION 5 : SOC MEMBERS ── -->
+      <div *ngIf="currentScreen === 'soc-members'" class="fade-in">
+        <div class="header-section" style="margin-bottom: 2rem;">
+          <h2>📊 SOC Incident Analytics</h2>
+          <p class="subtitle">Search, categorize and audit incidents handled by SOC team members at Vermeg</p>
+        </div>
+
+        <!-- Search Form Panel -->
+        <div class="control-panel-card" style="background: white; border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: var(--shadow-sm);">
+          <div class="control-panel-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.25rem; align-items: flex-end;">
+            
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select SOC Analyst *</label>
+              <select [(ngModel)]="selectedSocMember" class="analyser-input analyser-select">
+                <option value="">-- Choose SOC Analyst --</option>
+                <option *ngFor="let member of socMembers" [value]="member.email.split('@')[0]">
+                  {{ member.firstName }} {{ member.lastName }} ({{ member.email.split('@')[0] }})
+                </option>
+              </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">From (Start Date) *</label>
+              <input type="date" [(ngModel)]="socStartDate" class="analyser-input">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">To (End Date) *</label>
+              <input type="date" [(ngModel)]="socEndDate" class="analyser-input">
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+              <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Max Results Limit</label>
+              <input type="number" [(ngModel)]="socMaxResult" min="1" max="5000" class="analyser-input">
+            </div>
+
+            <button class="btn-primary analyser-btn" (click)="searchSocTechIncidents()" style="height: 42px; border-radius: 8px; padding: 0 1.5rem; font-size: 0.9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+              <span>🔍</span> Analyze
+            </button>
+          </div>
+        </div>
+
+        <!-- Alert messages -->
+        <div class="alert alert-danger" *ngIf="errorMessage">
+          ⚠️ {{ errorMessage }}
+        </div>
+
+        <!-- Loading State -->
+        <div *ngIf="socTechLoading" class="jira-loading" style="display: flex; align-items: center; justify-content: center; gap: 1rem; padding: 3rem; color: var(--text-muted);">
+          <div class="spinner"></div>
+          <span>Analyzing Vermeg Jira database for the selected technician...</span>
+        </div>
+
+        <!-- Error State -->
+        <div class="alert alert-danger" *ngIf="socTechError">
+          ⚠️ {{ socTechError }}
+        </div>
+
+        <!-- Metrics & Tickets Container -->
+        <div *ngIf="socTechTickets && !socTechLoading" class="fade-in">
+          
+          <!-- Metrics Cards Row -->
+          <div class="tickets-stats-row" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; margin-bottom: 2rem;">
+            <div class="ticket-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <span class="stat-val" style="font-size: 2rem; font-weight: 800; color: var(--text-dark); background: none; -webkit-text-fill-color: initial;">{{ socTechTickets.totalCount }}</span>
+              <span class="stat-lbl">Total Incidents</span>
+            </div>
+            <div class="ticket-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <span class="stat-val" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #7B1FA2, #e040fb); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                {{ socTechTickets.saasCount }}
+              </span>
+              <span class="stat-lbl">SaaS Cloud</span>
+            </div>
+            <div class="ticket-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <span class="stat-val" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #C1272D, #ff5252); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                {{ socTechTickets.onpremCount }}
+              </span>
+              <span class="stat-lbl">On-Prem SO</span>
+            </div>
+            <div class="ticket-stat-card" style="background: white; border: 1px solid var(--border-color); border-radius: 12px; padding: 1.25rem; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+              <span class="stat-val" style="font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #00B0FF, #00E5FF); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                {{ socTechTickets.securityCount }}
+              </span>
+              <span class="stat-lbl">Security Incidents</span>
+            </div>
+          </div>
+
+          <!-- Category Tabs -->
+          <div class="tab-bar" style="background: var(--surface-2); border-bottom: 1px solid var(--border-color); padding: 0 1.5rem; display: flex; gap: 0.5rem; border-radius: 12px 12px 0 0;">
+            <button class="tab-btn" [class.active]="activeSocTab === 'onprem'" (click)="setSocTab('onprem')">
+              <span class="tab-dot" style="background: #C1272D;"></span>
+              On-Prem Incidents ({{ socTechTickets.onpremCount }})
+            </button>
+            <button class="tab-btn" [class.active]="activeSocTab === 'saas'" (click)="setSocTab('saas')">
+              <span class="tab-dot" style="background: #7B1FA2;"></span>
+              SaaS Incidents ({{ socTechTickets.saasCount }})
+            </button>
+            <button class="tab-btn" [class.active]="activeSocTab === 'security'" (click)="setSocTab('security')">
+              <span class="tab-dot" style="background: #00B0FF;"></span>
+              Security Incidents ({{ socTechTickets.securityCount }})
+            </button>
+          </div>
+
+          <!-- Incidents Table -->
+          <div class="table-container" style="border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px; background: white; overflow-x: auto;">
+            
+            <!-- On-Prem Table -->
+            <table class="data-table" *ngIf="activeSocTab === 'onprem'">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">Key</th>
+                  <th>Summary</th>
+                  <th>Status</th>
+                  <th>Assignee</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngIf="socTechTickets.onprem.length === 0">
+                  <td colspan="4" class="text-center empty-state" style="padding: 2.5rem; color: var(--text-muted);">No On-Prem incidents found for this analyst in the specified period.</td>
+                </tr>
+                <tr *ngFor="let t of socTechTickets.onprem" class="ticket-row">
+                  <td>
+                    <a [href]="'https://jira.vermeg.com/browse/' + t.key" target="_blank" class="ticket-key">{{ t.key }}</a>
+                  </td>
+                  <td class="font-medium" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dark);">
+                    {{ t.fields.summary }}
+                  </td>
+                  <td>
+                    <span class="status-badge" [ngClass]="t.fields.status.name.toLowerCase().includes('progress') ? 'status-progress' : 'status-open'">
+                      {{ t.fields.status.name }}
+                    </span>
+                  </td>
+                  <td>
+                    <span style="font-size: 0.85rem; color: var(--text-dark); font-weight: 500;">
+                      {{ t.fields.assignee?.displayName || 'Unassigned' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- SaaS Table -->
+            <table class="data-table" *ngIf="activeSocTab === 'saas'">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">Key</th>
+                  <th>Summary</th>
+                  <th>Status</th>
+                  <th>Assignee</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngIf="socTechTickets.saas.length === 0">
+                  <td colspan="4" class="text-center empty-state" style="padding: 2.5rem; color: var(--text-muted);">No SaaS incidents found for this analyst in the specified period.</td>
+                </tr>
+                <tr *ngFor="let t of socTechTickets.saas" class="ticket-row">
+                  <td>
+                    <a [href]="'https://jira.vermeg.com/browse/' + t.key" target="_blank" class="ticket-key">{{ t.key }}</a>
+                  </td>
+                  <td class="font-medium" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dark);">
+                    {{ t.fields.summary }}
+                  </td>
+                  <td>
+                    <span class="status-badge" [ngClass]="t.fields.status.name.toLowerCase().includes('progress') ? 'status-progress' : 'status-open'">
+                      {{ t.fields.status.name }}
+                    </span>
+                  </td>
+                  <td>
+                    <span style="font-size: 0.85rem; color: var(--text-dark); font-weight: 500;">
+                      {{ t.fields.assignee?.displayName || 'Unassigned' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- Security Table -->
+            <table class="data-table" *ngIf="activeSocTab === 'security'">
+              <thead>
+                <tr>
+                  <th style="width: 130px;">Key</th>
+                  <th>Summary</th>
+                  <th>Status</th>
+                  <th>Assignee</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngIf="socTechTickets.security.length === 0">
+                  <td colspan="4" class="text-center empty-state" style="padding: 2.5rem; color: var(--text-muted);">No Security Incidents found for this analyst in the specified period.</td>
+                </tr>
+                <tr *ngFor="let t of socTechTickets.security" class="ticket-row">
+                  <td>
+                    <a [href]="'https://jira.vermeg.com/browse/' + t.key" target="_blank" class="ticket-key">{{ t.key }}</a>
+                  </td>
+                  <td class="font-medium" style="max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-dark);">
+                    {{ t.fields.summary }}
+                  </td>
+                  <td>
+                    <span class="status-badge" [ngClass]="t.fields.status.name.toLowerCase().includes('progress') ? 'status-progress' : 'status-open'">
+                      {{ t.fields.status.name }}
+                    </span>
+                  </td>
+                  <td>
+                    <span style="font-size: 0.85rem; color: var(--text-dark); font-weight: 500;">
+                      {{ t.fields.assignee?.displayName || 'Unassigned' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Add/Edit Modal -->
+  <div class="modal-overlay" *ngIf="showAddModal || showEditModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 *ngIf="showAddModal">Create User</h3>
+        <h3 *ngIf="showEditModal">Edit {{ editingUser.firstName }} {{ editingUser.lastName }}</h3>
+        <button class="btn-close" (click)="closeModals()">×</button>
+      </div>
+
+      <div class="modal-body">
+        <!-- Form for Add -->
+        <form *ngIf="showAddModal" (ngSubmit)="createUser()" #addForm="ngForm">
+          <div class="form-group">
+            <label>First Name *</label>
+            <input type="text" name="firstName" [(ngModel)]="newUser.firstName" required>
+          </div>
+          <div class="form-group">
+            <label>Last Name *</label>
+            <input type="text" name="lastName" [(ngModel)]="newUser.lastName" required>
+          </div>
+          <div class="form-group">
+            <label>Email *</label>
+            <input type="email" name="email" [(ngModel)]="newUser.email" required>
+          </div>
+          <div class="form-group">
+            <label>Password *</label>
+            <input type="password" name="password" [(ngModel)]="newUser.password" required>
+          </div>
+          <div class="form-group">
+            <label>Role *</label>
+            <select name="role" [(ngModel)]="newUser.role" required>
+              <option *ngFor="let r of roles" [value]="r">{{ r | uppercase }}</option>
+            </select>
+          </div>
+          
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="closeModals()">Cancel</button>
+            <button type="submit" class="btn-primary">Save</button>
+          </div>
+        </form>
+
+        <!-- Form for Edit -->
+        <form *ngIf="showEditModal" (ngSubmit)="updateUser()" #editForm="ngForm">
+          <div class="form-group">
+            <label>First Name *</label>
+            <input type="text" name="firstName" [(ngModel)]="editingUser.firstName" required>
+          </div>
+          <div class="form-group">
+            <label>Last Name *</label>
+            <input type="text" name="lastName" [(ngModel)]="editingUser.lastName" required>
+          </div>
+          <div class="form-group">
+            <label>Email *</label>
+            <input type="email" name="email" [(ngModel)]="editingUser.email" required>
+          </div>
+          <div class="form-group">
+            <label>Role *</label>
+            <select name="role" [(ngModel)]="editingUser.role" required>
+              <option *ngFor="let r of roles" [value]="r">{{ r | uppercase }}</option>
+            </select>
+          </div>
+          
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="closeModals()">Cancel</button>
+            <button type="submit" class="btn-primary">Update</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>

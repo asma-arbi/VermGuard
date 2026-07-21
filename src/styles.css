@@ -1,0 +1,119 @@
+/* =============================================
+   VermGuard — Global Design System
+   Gradient: Dark Red → Crimson → Violet
+   ============================================= */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+:root {
+  /* === Brand Gradient: Red → Violet === */
+  --brand-start:   #9C27B0;   /* violet (slightly lighter) */
+  --brand-mid:     #C1272D;   /* vermeg red                */
+  --brand-end:     #901B40;   /* dark crimson              */
+
+  --vermeg-red:    #C1272D;
+  --vermeg-violet: #9C27B0;
+  --vermeg-dark:   #6A1B9A;
+  --vermeg-light:  #F3E5F5;
+
+  /* The main brand gradient used everywhere */
+  --brand-gradient: linear-gradient(135deg, #6A1B9A 0%, #9C27B0 30%, #C1272D 70%, #901B40 100%);
+  /* Lighter version for glows / accents */
+  --brand-gradient-soft: linear-gradient(135deg, rgba(106,27,154,0.12) 0%, rgba(193,39,45,0.12) 100%);
+
+  /* Layout */
+  --background:    #f0f2f8;
+  --surface:       #ffffff;
+  --surface-2:     #f8f9fc;
+  --text-dark:     #1a1a2e;
+  --text-muted:    #6b7280;
+  --border-color:  #e4e6ef;
+
+  /* Shadows */
+  --shadow-lg:  0 16px 48px rgba(74, 20, 140, 0.16);
+  --shadow-brand: 0 8px 24px rgba(123, 31, 162, 0.35);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background-color: var(--background);
+  color: var(--text-dark);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--brand-gradient); border-radius: 99px; }
+
+/* ── Selection ── */
+::selection { background: rgba(123,31,162,0.2); color: var(--text-dark); }
+
+/* ── Alert helpers (shared) ── */
+.alert {
+  padding: 0.85rem 1.25rem;
+  border-radius: 10px;
+  font-weight: 500;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.alert-success {
+  background: linear-gradient(135deg, #d1fae5, #ecfdf5);
+  color: #065f46;
+  border: 1px solid #10b981;
+}
+.alert-danger {
+  background: linear-gradient(135deg, #fee2e2, #fff1f2);
+  color: #991b1b;
+  border: 1px solid #ef4444;
+}
+
+/* ── Premium Select (role dropdown) ── */
+.role-select-wrapper {
+  position: relative;
+}
+.role-select-wrapper::after {
+  content: '▾';
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--vermeg-violet);
+  pointer-events: none;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.role-select {
+  width: 100%;
+  padding: 0.85rem 2.5rem 0.85rem 1rem;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  appearance: none;
+  -webkit-appearance: none;
+  background: linear-gradient(white, white) padding-box,
+              var(--brand-gradient) border-box;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: box-shadow 0.3s, transform 0.2s;
+}
+.role-select:focus {
+  outline: none;
+  box-shadow: var(--shadow-brand);
+  transform: translateY(-1px);
+}
+.role-select option {
+  font-weight: 500;
+  color: var(--text-dark);
+  background: white;
+}

@@ -1,0 +1,229 @@
+<!-- Real-time WebSockets Notifications Overlay -->
+<div class="notification-toast-container">
+  <div class="notification-toast" *ngFor="let note of notifications">
+    <div class="toast-icon" (click)="notifications = notifications.filter(n => n.id !== note.id)" style="cursor: pointer;">⚡</div>
+    <div class="toast-content">
+      <div class="toast-title" style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+        <span>New Ticket Arrived</span>
+        <a [href]="'https://jira.vermeg.com/browse/' + note.key" target="_blank" style="color: #c4b5fd; text-decoration: underline; font-weight: 700; font-size: 0.75rem;">Open Jira ↗</a>
+      </div>
+      <div class="toast-message" (click)="notifications = notifications.filter(n => n.id !== note.id)" style="cursor: pointer;">{{ note.message }}</div>
+    </div>
+    <div class="toast-close" (click)="notifications = notifications.filter(n => n.id !== note.id)" style="cursor: pointer;">×</div>
+  </div>
+</div>
+
+<div class="jira-section">
+
+  <!-- Header with team toggle -->
+  <div class="jira-header">
+    <div class="jira-title-group">
+      <h3 class="jira-title">🎫 Jira Ticketing Operations</h3>
+      <p class="jira-subtitle">Real-time tracking of Vermeg Jira tickets</p>
+    </div>
+
+    <!-- Team Toggle: Support / SOC -->
+    <div class="team-toggle">
+      <button class="team-btn" [class.active]="activeTeam === 'support'" (click)="setTeam('support')">
+        🟣 Support View
+      </button>
+      <button class="team-btn" [class.active]="activeTeam === 'soc'" (click)="setTeam('soc')">
+        🔴 SOC View
+      </button>
+    </div>
+  </div>
+
+  <!-- Tickets Stats Row -->
+  <div class="tickets-stats-row" *ngIf="teamTickets">
+    <div class="ticket-stat-card">
+      <span class="stat-val">{{ totalTicketsCount }}</span>
+      <span class="stat-lbl">Total Open Tickets</span>
+    </div>
+    <div class="ticket-stat-card">
+      <!-- Calcul dynamique du nombre de tickets "In Progress" -->
+      <span class="stat-val progress-color">
+        {{ getPriorityCounts().critical + getPriorityCounts().high }}
+      </span>
+      <span class="stat-lbl">Critical & High Priority</span>
+    </div>
+    <div class="ticket-stat-card">
+      <span class="stat-val open-color">{{ getPriorityCounts().medium }}</span>
+      <span class="stat-lbl">Medium Priority</span>
+    </div>
+  </div>
+
+  <!-- Filter & Action Bar (Search & Export) -->
+  <div class="action-bar">
+    <div class="search-box">
+      <span class="search-icon">🔍</span>
+      <input type="text" placeholder="Search by Key, Summary, Assignee or Status..." [(ngModel)]="searchQuery"
+        class="search-input">
+    </div>
+
+    <!-- Date Range Filters -->
+    <div class="date-filters">
+      <div class="date-input-group">
+        <label>From:</label>
+        <input type="date" [(ngModel)]="startDateFilter" class="date-input-field">
+      </div>
+      <div class="date-input-group">
+        <label>To:</label>
+        <input type="date" [(ngModel)]="endDateFilter" class="date-input-field">
+      </div>
+      <button class="btn-clear-dates" *ngIf="startDateFilter || endDateFilter"
+        (click)="startDateFilter = ''; endDateFilter = '';" title="Reset date filters">
+        ✕
+      </button>
+    </div>
+
+    <button class="btn-export" (click)="exportToCsv()" [disabled]="currentTickets.length === 0">
+      📥 Export CSV
+    </button>
+  </div>
+
+  <!-- SOC Tabs: On-Prem | SaaS -->
+  <div class="tab-bar" *ngIf="activeTeam === 'soc'">
+    <button class="tab-btn" [class.active]="activeTab === 'onPrem'" (click)="setTab('onPrem')">
+      <span class="tab-dot onprem"></span>
+      On-Prem Tickets (SO)
+      <span class="tab-count">{{ onPremTicketsCount }}</span>
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'saas'" (click)="setTab('saas')">
+      <span class="tab-dot saas"></span>
+      SaaS Tickets (SAASINSUR)
+      <span class="tab-count">{{ saasTicketsCount }}</span>
+    </button>
+  </div>
+
+  <!-- Support label -->
+  <div class="support-label" *ngIf="activeTeam === 'support'">
+    <span class="tab-dot onprem"></span>
+    On-Prem Tickets (SO)
+    <span class="tab-count">{{ onPremTicketsCount }}</span>
+  </div>
+
+  <!-- Loading -->
+  <div class="jira-loading" *ngIf="isLoading">
+    <div class="spinner"></div>
+    <span>Syncing live data from Vermeg Jira...</span>
+  </div>
+
+  <!-- Error -->
+  <div class="alert alert-danger" *ngIf="errorMessage && !isLoading">
+    ⚠️ {{ errorMessage }}
+  </div>
+
+  <!-- Tickets Table -->
+  <div class="tickets-table-container" *ngIf="!isLoading && !errorMessage" [class.pulse-animation]="showUpdatePulse">
+
+    <table class="tickets-table" *ngIf="currentTickets.length > 0; else emptyState">
+      <thead>
+        <tr>
+          <th>Key</th>
+          <th>Summary</th>
+          <th>Status</th>
+          <th>Priority</th>
+          <th>Assignee</th>
+          <th>Created</th>
+          <th>Updated</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let ticket of currentTickets" class="ticket-row">
+          <td>
+            <a [href]="'https://jira.vermeg.com/browse/' + ticket.key" target="_blank" class="ticket-key">
+              {{ ticket.key }}
+            </a>
+          </td>
+          <td class="ticket-summary" [title]="ticket.fields.summary">{{ ticket.fields.summary }}</td>
+          <td>
+            <span class="status-badge" [ngClass]="getStatusClass(ticket.fields.status.name)">
+              {{ ticket.fields.status.name }}
+            </span>
+          </td>
+          <td>
+            <span class="priority-badge" [ngClass]="getPriorityClass(ticket.fields.priority?.name)">
+              {{ ticket.fields.priority?.name || 'Medium' }}
+            </span>
+          </td>
+          <td class="assignee-cell">
+            <span *ngIf="ticket.fields.assignee; else unassigned">
+              {{ ticket.fields.assignee.displayName }}
+            </span>
+            <ng-template #unassigned>
+              <span class="unassigned">Unassigned</span>
+            </ng-template>
+          </td>
+          <td class="date-cell">{{ formatDate(ticket.fields.created) }}</td>
+          <td class="date-cell">{{ formatDate(ticket.fields.updated) }}</td>
+          <td class="actions-cell">
+            <button class="btn-action" (click)="openActionPanel(ticket)" title="Quick Actions">
+              <i class="fas fa-bolt"></i>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Empty State -->
+    <ng-template #emptyState>
+      <div class="empty-jira">
+        <div class="empty-icon">🎉</div>
+        <p>No non-closed tickets</p>
+      </div>
+    </ng-template>
+
+  </div>
+
+</div>
+
+<!-- ── QUICK ACTION MODAL ── -->
+<div class="action-modal-overlay" *ngIf="actionPanelTicket" (click)="closeActionPanel()">
+  <div class="action-modal" (click)="$event.stopPropagation()">
+    <div class="action-modal-header">
+      <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
+      <span class="action-ticket-key">{{ actionPanelTicket?.key }}</span>
+      <button class="btn-close-action" (click)="closeActionPanel()">×</button>
+    </div>
+
+    <!-- Feedback messages -->
+    <div class="action-feedback success" *ngIf="actionSuccess">✅ {{ actionSuccess }}</div>
+    <div class="action-feedback error" *ngIf="actionError">❌ {{ actionError }}</div>
+
+    <div class="action-sections">
+      <!-- Section 1: Change Status -->
+      <div class="action-section">
+        <h4><i class="fas fa-exchange-alt"></i> Change Status</h4>
+        <div class="action-buttons">
+          <button class="btn-transition" (click)="doTransition('In Progress')" [disabled]="actionLoading">▶ In
+            Progress</button>
+          <button class="btn-transition" (click)="doTransition('Done')" [disabled]="actionLoading">✓ Done</button>
+          <button class="btn-transition" (click)="doTransition('To Do')" [disabled]="actionLoading">↩ To Do</button>
+        </div>
+      </div>
+
+      <!-- Section 2: Assign -->
+      <div class="action-section">
+        <h4><i class="fas fa-user-plus"></i> Assign To</h4>
+        <div class="action-input-row">
+          <input type="text" placeholder="Username or email..." [(ngModel)]="assigneeInput" class="action-input">
+          <button class="btn-do" (click)="doAssign()" [disabled]="actionLoading || !assigneeInput">
+            Assign
+          </button>
+        </div>
+      </div>
+
+      <!-- Section 3: Comment -->
+      <div class="action-section">
+        <h4><i class="fas fa-comment"></i> Add Comment</h4>
+        <textarea rows="3" placeholder="Write a quick comment..." [(ngModel)]="commentInput"
+          class="action-textarea"></textarea>
+        <button class="btn-do" (click)="doComment()" [disabled]="actionLoading || !commentInput"
+          style="margin-top: 8px; width: 100%;">
+          Post Comment
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
