@@ -308,12 +308,30 @@ export class OrganizationService {
             const monUrl = monUrls.length > 0 ? monUrls[0] : (primaryUrl || null);
 
             const stateHistory = mon.history || mon.state_history || [];
-            for (const h of stateHistory) {
-              const state = h.state || h.status;
-              if (state === 1 || state === 'alert' || state === 'WARN' || state === 'warning') {
-                const eventTs = (h.from_ts || h.timestamp) * 1000;
-                const endTs = h.to_ts || ((h.from_ts || h.timestamp) + 1800);
-                const dtMins = Math.max(1, Math.round((endTs - (h.from_ts || h.timestamp)) / 60));
+            for (let i = 0; i < stateHistory.length; i++) {
+              const item = stateHistory[i];
+              let startTsSec = 0;
+              let stateCode: any = 0;
+
+              if (Array.isArray(item)) {
+                startTsSec = item[0];
+                stateCode = item[1];
+              } else if (item && typeof item === 'object') {
+                startTsSec = item.from_ts || item.timestamp || 0;
+                stateCode = item.state !== undefined ? item.state : item.status;
+              }
+
+              // stateCode: 1 = WARNING, 2 = ALERT (BREACH)
+              if (stateCode === 1 || stateCode === 2 || stateCode === 'alert' || stateCode === 'warning' || stateCode === 'WARN') {
+                let endTsSec = startTsSec + 1800; // Default 30 min duration
+                if (i + 1 < stateHistory.length) {
+                  const nextItem = stateHistory[i + 1];
+                  const nextTs = Array.isArray(nextItem) ? nextItem[0] : (nextItem.from_ts || nextItem.timestamp);
+                  if (nextTs > startTsSec) endTsSec = nextTs;
+                }
+
+                const eventTs = startTsSec * 1000;
+                const dtMins = Math.max(1, Math.round((endTsSec - startTsSec) / 60));
 
                 const isExcluded = excludedTimestampsSet.has(eventTs);
                 if (isExcluded) {
@@ -323,7 +341,7 @@ export class OrganizationService {
                 }
 
                 const exclusionInfo = excludedTimestampsSet.get(eventTs);
-                const { isMuted, datadogDowntimeWindow } = await resolveDowntimeForEvent(mon.monitor_id || mon.id, monUrl, h.from_ts || h.timestamp, endTs);
+                const { isMuted, datadogDowntimeWindow } = await resolveDowntimeForEvent(mon.monitor_id || mon.id, monUrl, startTsSec, endTsSec);
 
                 let failureCause = 'HTTP 5xx Server Error / Target Unreachable';
                 let responseTimeThreshold = '3000ms';
@@ -337,12 +355,12 @@ export class OrganizationService {
                 downtimeEvents.push({
                   id: eventTs,
                   timestamp: eventTs,
-                  startTime: new Date(eventTs).toISOString(),
-                  endTime: new Date(endTs * 1000).toISOString(),
+                  startTime: new Date(startTsSec * 1000).toISOString(),
+                  endTime: new Date(endTsSec * 1000).toISOString(),
                   durationMins: dtMins,
                   uptime: parseFloat((mon.sli_value ?? 98.0).toFixed(4)),
                   url: monUrl,
-                  status: state === 1 || state === 'alert' ? 'BREACH' : 'WARNING',
+                  status: stateCode === 2 || stateCode === 'alert' ? 'BREACH' : 'WARNING',
                   failureCause,
                   responseTimeThreshold,
                   isMuted,
