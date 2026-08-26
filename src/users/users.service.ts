@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -7,11 +7,81 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserRole } from './enums/user-role.enum';
 
 @Injectable()
-export class UsersService {
+export class UsersService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
   ) {}
+
+  async onModuleInit() {
+    await this.seedUsers();
+  }
+
+  async seedUsers() {
+    const socMembers = [
+      { username: 'it_soc', displayName: 'IT SOC' },
+      { username: 'sbenaissia', displayName: 'S. Benaissia' },
+      { username: 'hghiloufi', displayName: 'H. Ghiloufi' },
+      { username: 'anamouchi', displayName: 'A. Namouchi' },
+      { username: 'zhammami', displayName: 'Z. Hammami' },
+      { username: 'khksibi', displayName: 'K. Ksibi' },
+      { username: 'ojebali', displayName: 'O. Jebali' },
+      { username: 'mselmani', displayName: 'M. Selmani' },
+      { username: 'sfradj', displayName: 'S. Fradj' },
+      { username: 'ybenamara', displayName: 'Y. Ben Amara' },
+      { username: 'socuser', displayName: 'SOC User' },
+      { username: 'wsaadli', displayName: 'W. Saadli' },
+      { username: 'mkouissi', displayName: 'M. Kouissi' },
+      { username: 'nabbes', displayName: 'N. Abbes' },
+      { username: 'onssibi', displayName: 'O. Nssibi' }
+    ];
+
+    const supportMembers = [
+      { username: 'ibedoui', displayName: 'Imen Bedoui' },
+      { username: 'maajmi_ct', displayName: 'Mohamed Amine Ajmi' },
+      { username: 'nkechiche_ct', displayName: 'Nawal Kechiche' },
+      { username: 'mgbasly', displayName: 'Mohamed Ghaith Basly' },
+      { username: 'imouhligharbi', displayName: 'Iheb Mouhli Gharbi' },
+      { username: 'wkhannassa', displayName: 'Wael Khannassa' },
+      { username: 'asma', displayName: 'Asma Arbi' },
+      { username: 'zeineb', displayName: 'Zeineb Hammami' }
+    ];
+
+    const managers = [
+      { username: 'aymen', displayName: 'Aymen Bchir' }
+    ];
+
+    const createMember = async (member: { username: string, displayName: string }, role: UserRole) => {
+      const email = `${member.username}@vermeg.com`;
+      const existing = await this.userRepository.findOneBy({ email });
+      if (!existing) {
+        const parts = member.displayName.split(' ');
+        const firstName = parts[0];
+        const lastName = parts.slice(1).join(' ') || '.';
+        const user = this.userRepository.create({
+          firstName,
+          lastName,
+          email,
+          password: `${member.username}123`,
+          role,
+          openTicketsCount: 0,
+          canAddUser: role === UserRole.MANAGER || member.username === 'asma'
+        });
+        await this.userRepository.save(user);
+      }
+    };
+
+    for (const member of socMembers) {
+      await createMember(member, UserRole.SOC);
+    }
+    for (const member of supportMembers) {
+      await createMember(member, UserRole.SUPPORT);
+    }
+    for (const member of managers) {
+      await createMember(member, UserRole.MANAGER);
+    }
+  }
+
 
   /**
    * Retourne tous les utilisateurs enregistrés.

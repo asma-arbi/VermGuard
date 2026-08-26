@@ -7,6 +7,9 @@ import { UsersModule } from './users/users.module';
 import { JiraModule } from './jira/jira.module';
 import { EventsModule } from './events/events.module';
 import { AuditModule } from './audit/audit.module';
+import { DowntimeModule } from './downtime/downtime.module';
+import { CopilotModule } from './copilot/copilot.module';
+import { EvaluationsModule } from './evaluations/evaluations.module';
 
 @Module({
   imports: [
@@ -30,6 +33,9 @@ import { AuditModule } from './audit/audit.module';
     }),
     UsersModule,
     JiraModule,
+    DowntimeModule,
+    CopilotModule,
+    EvaluationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

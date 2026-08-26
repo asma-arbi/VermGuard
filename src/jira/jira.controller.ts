@@ -133,4 +133,35 @@ Les requêtes JQL sont définies dans \`jira-queries.constants.ts\` et réutilis
   ) {
     return this.jiraService.assignTicket(key, assignee);
   }
+
+  /**
+   * POST /jira/tickets/technician
+   * Récupère et catégorise les tickets d'un technicien SOC spécifique sur une période donnée
+   */
+  @Post('tickets/technician')
+  async getTicketsByTechnician(
+    @Body('technician') technician: string,
+    @Body('startDate') startDate: string,
+    @Body('endDate') endDate: string,
+    @Body('maxResult') maxResult: number,
+  ) {
+    if (!technician || !startDate || !endDate) {
+      throw new BadRequestException('Paramètres technician, startDate et endDate requis.');
+    }
+    return this.jiraService.getIncidentsPerSocTechnician(
+      technician,
+      startDate,
+      endDate,
+      maxResult || 50
+    );
+  }
+
+  /**
+   * GET /jira/soc-members
+   * Retourne la liste des vrais membres du SOC Vermeg (noms d'utilisateurs Jira)
+   */
+  @Get('soc-members')
+  async getSocMembers() {
+    return this.jiraService.getRealSocMembersList();
+  }
 }
