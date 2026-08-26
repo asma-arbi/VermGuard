@@ -1,8 +1,23 @@
 <div class="dashboard-layout">
+  <!-- Real-Time Notification Pop-Up Toasts Overlay -->
+  <div class="notification-toast-container">
+    <div class="notification-toast" *ngFor="let note of globalNotifications">
+      <div class="toast-icon" (click)="removeGlobalNotification(note.id)" style="cursor: pointer;">⚡</div>
+      <div class="toast-content">
+        <div class="toast-title" style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+          <span>Jira Ticket Alert</span>
+          <a *ngIf="note.key" [href]="'https://jira.vermeg.com/browse/' + note.key" target="_blank" style="color: #c4b5fd; text-decoration: underline; font-weight: 700; font-size: 0.75rem;">Open Jira ↗</a>
+        </div>
+        <div class="toast-message" (click)="removeGlobalNotification(note.id)" style="cursor: pointer;">{{ note.message }}</div>
+      </div>
+      <div class="toast-close" (click)="removeGlobalNotification(note.id)" style="cursor: pointer;">×</div>
+    </div>
+  </div>
+
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="logo-area">
-      <span class="slash">/</span><span class="logo-text">vermguard</span>
+      <span class="slash">/</span><span class="logo-text">VermGuard</span>
     </div>
     
     <nav class="nav-menu">
@@ -34,14 +49,23 @@
          style="cursor: pointer;">
         <i class="icon">👨‍💻</i> SOC Members
       </a>
-      
-      <!-- Audit log réservé au Manager -->
+
+      <!-- SLO Guard (Downtime Tracker): visible pour manager et soc -->
       <a class="nav-item" 
-         *ngIf="activeRole === 'manager'"
-         [class.active]="currentScreen === 'audit'" 
-         (click)="showAudit()"
+         *ngIf="activeRole === 'manager' || activeRole === 'soc'"
+         [class.active]="currentScreen === 'slo-guard'" 
+         (click)="showSloGuard()"
          style="cursor: pointer;">
-        <i class="icon">🛡️</i> Audit Log
+        <i class="icon">⏱️</i> SLO Guard
+      </a>
+
+      <!-- Évaluations mensuelles : visible pour manager et soc -->
+      <a class="nav-item" 
+         *ngIf="activeRole === 'manager' || activeRole === 'soc'"
+         [class.active]="currentScreen === 'evaluations'" 
+         (click)="showEvaluations()"
+         style="cursor: pointer;">
+        <i class="icon">📈</i> Evaluations
       </a>
     </nav>
   </aside>
@@ -167,20 +191,15 @@
         <app-jira-tickets></app-jira-tickets>
       </div>
 
-      <!-- ── SECTION 3 : AUDIT LOG (Manager only) ── -->
-      <div *ngIf="currentScreen === 'audit'" class="fade-in">
-        <app-audit></app-audit>
-      </div>
-
       <!-- ── SECTION 4 : NOTIFICATIONS ── -->
       <div *ngIf="currentScreen === 'notifications'" class="fade-in">
         <div class="header-section" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
           <div>
-            <h2>🔔 Session Alerts History</h2>
-            <p class="subtitle">Log of live WebSocket notifications received during this session</p>
+            <h2>🔔 Historique des Notifications (24h)</h2>
+            <p class="subtitle">Journal des notifications temps réel conservées pendant 24h</p>
           </div>
           <button class="btn-secondary" (click)="clearNotifications()" *ngIf="notificationHistory.length > 0">
-            🗑️ Clear History
+            🗑️ Vider l'historique
           </button>
         </div>
 
@@ -188,17 +207,17 @@
           <table class="data-table">
             <thead>
               <tr>
-                <th style="width: 120px;">Time</th>
-                <th style="width: 140px;">Ticket Key</th>
-                <th>Alert Description</th>
+                <th style="width: 170px;">Horodatage</th>
+                <th style="width: 140px;">Clé Ticket</th>
+                <th>Description de l'alerte</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngIf="notificationHistory.length === 0">
-                <td colspan="3" class="text-center empty-state">No real-time notifications received since you logged in.</td>
+                <td colspan="3" class="text-center empty-state">Aucune notification reçue au cours des dernières 24 heures.</td>
               </tr>
               <tr *ngFor="let note of notificationHistory">
-                <td style="color: var(--text-muted); font-size: 0.85rem;">{{ note.timestamp | date:'mediumTime' }}</td>
+                <td style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">{{ note.timestamp | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td>
                   <a [href]="'https://jira.vermeg.com/browse/' + note.key" target="_blank" style="text-decoration: none;">
                     <span class="role-badge" style="background: rgba(123, 31, 162, 0.1); color: #7B1FA2; border: 1px solid rgba(123, 31, 162, 0.3); font-weight: 700; font-family: monospace; cursor: pointer; display: inline-block; transition: all 0.2s;">
@@ -211,6 +230,12 @@
             </tbody>
           </table>
         </div>
+      </div>
+
+      <!-- ── SECTION 6 : ÉVALUATIONS PERFORMANCES (Manager & SOC) ── -->
+      <div *ngIf="currentScreen === 'evaluations'" class="fade-in">
+        <app-evaluation-manager *ngIf="activeRole === 'manager'"></app-evaluation-manager>
+        <app-evaluation-soc-view *ngIf="activeRole === 'soc' || activeRole === 'support'"></app-evaluation-soc-view>
       </div>
 
       <!-- ── SECTION 5 : SOC MEMBERS ── -->
@@ -252,6 +277,16 @@
             <button class="btn-primary analyser-btn" (click)="searchSocTechIncidents()" style="height: 42px; border-radius: 8px; padding: 0 1.5rem; font-size: 0.9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
               <span>🔍</span> Analyze
             </button>
+          </div>
+        </div>
+
+        <!-- Client Chart Section -->
+        <div *ngIf="socTechTickets && !socTechLoading" class="fade-in" style="background: white; border: 1px solid var(--border-color); border-radius: 16px; padding: 1.5rem; margin-bottom: 2rem; box-shadow: var(--shadow-sm);">
+          <h3 style="font-size: 1rem; font-weight: 800; background: var(--brand-gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; font-family: inherit;">
+            <span>📊</span> Incidents Opened Per Client
+          </h3>
+          <div style="height: 280px; position: relative; width: 100%;">
+            <canvas id="socClientChart"></canvas>
           </div>
         </div>
 
@@ -317,7 +352,7 @@
           </div>
 
           <!-- Incidents Table -->
-          <div class="table-container" style="border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px; background: white; overflow-x: auto;">
+          <div class="table-container" [style.border-radius]="activeTabTotalCount > pageSize ? '0' : '0 0 12px 12px'" style="border: 1px solid var(--border-color); border-top: none; background: white; overflow-x: auto;">
             
             <!-- On-Prem Table -->
             <table class="data-table" *ngIf="activeSocTab === 'onprem'">
@@ -333,7 +368,7 @@
                 <tr *ngIf="socTechTickets.onprem.length === 0">
                   <td colspan="4" class="text-center empty-state" style="padding: 2.5rem; color: var(--text-muted);">No On-Prem incidents found for this analyst in the specified period.</td>
                 </tr>
-                <tr *ngFor="let t of socTechTickets.onprem" class="ticket-row">
+                <tr *ngFor="let t of paginatedOnpremTickets" class="ticket-row">
                   <td>
                     <a [href]="'https://jira.vermeg.com/browse/' + t.key" target="_blank" class="ticket-key">{{ t.key }}</a>
                   </td>
@@ -368,7 +403,7 @@
                 <tr *ngIf="socTechTickets.saas.length === 0">
                   <td colspan="4" class="text-center empty-state" style="padding: 2.5rem; color: var(--text-muted);">No SaaS incidents found for this analyst in the specified period.</td>
                 </tr>
-                <tr *ngFor="let t of socTechTickets.saas" class="ticket-row">
+                <tr *ngFor="let t of paginatedSaasTickets" class="ticket-row">
                   <td>
                     <a [href]="'https://jira.vermeg.com/browse/' + t.key" target="_blank" class="ticket-key">{{ t.key }}</a>
                   </td>
@@ -403,7 +438,7 @@
                 <tr *ngIf="socTechTickets.security.length === 0">
                   <td colspan="4" class="text-center empty-state" style="padding: 2.5rem; color: var(--text-muted);">No Security Incidents found for this analyst in the specified period.</td>
                 </tr>
-                <tr *ngFor="let t of socTechTickets.security" class="ticket-row">
+                <tr *ngFor="let t of paginatedSecurityTickets" class="ticket-row">
                   <td>
                     <a [href]="'https://jira.vermeg.com/browse/' + t.key" target="_blank" class="ticket-key">{{ t.key }}</a>
                   </td>
@@ -426,11 +461,372 @@
 
           </div>
 
+          <!-- Pagination Controls -->
+          <div class="pagination-container" *ngIf="activeTabTotalCount > pageSize" style="display: flex; align-items: center; justify-content: space-between; padding: 0.85rem 1.5rem; background: var(--surface-2); border: 1px solid var(--border-color); border-top: none; border-radius: 0 0 12px 12px;">
+            <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">
+              Showing {{ (activeTabCurrentPage - 1) * pageSize + 1 }} to {{ minNumber(activeTabCurrentPage * pageSize, activeTabTotalCount) }} of {{ activeTabTotalCount }} incidents
+            </div>
+            <div class="pagination-buttons" style="display: flex; gap: 0.35rem; align-items: center;">
+              <button class="btn-pagination" [disabled]="activeTabCurrentPage === 1" (click)="setPage(activeTabCurrentPage - 1)">
+                ‹ Prev
+              </button>
+              
+              <button *ngFor="let p of getPagesArray(activeTabTotalPages)" 
+                      class="btn-pagination-num" 
+                      [class.active]="activeTabCurrentPage === p"
+                      (click)="setPage(p)">
+                {{ p }}
+              </button>
+
+              <button class="btn-pagination" [disabled]="activeTabCurrentPage === activeTabTotalPages" (click)="setPage(activeTabCurrentPage + 1)">
+                Next ›
+              </button>
+            </div>
+          </div>
+
         </div>
 
       </div>
 
+      <!-- ── SECTION 5 : SLO GUARD (DATADOG SLO MONITORING & DOWNTIME CORRECTION) ── -->
+      <div *ngIf="currentScreen === 'slo-guard'" class="fade-in">
+        <div class="header-section" style="margin-bottom: 1.5rem;">
+          <h2>SLO Guard</h2>
+          <p class="subtitle">Operational Downtime Management & Real-Time Datadog SLO Compliance Tracking</p>
+        </div>
+
+        <!-- SLO Main Container -->
+        <div class="control-panel-card" style="background: white; border: 1px solid var(--border-color); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow-sm); margin-bottom: 2rem;">
+          
+          <!-- Breadcrumb Navigation -->
+          <div class="slo-breadcrumb">
+            <span class="slo-crumb" [class.active]="sloViewerTab === 'orgs'" (click)="sloViewerTab = 'orgs'; selectedOrg = null; selectedSlo = null;">
+              🏢 Organizations
+            </span>
+            <span class="slo-crumb-sep" *ngIf="selectedOrg">›</span>
+            <span class="slo-crumb" *ngIf="selectedOrg" [class.active]="sloViewerTab === 'slos'" (click)="sloViewerTab = 'slos'; selectedSlo = null;">
+              {{ selectedOrg.orgName }}
+            </span>
+            <span class="slo-crumb-sep" *ngIf="selectedSlo">›</span>
+            <span class="slo-crumb" *ngIf="selectedSlo" [class.active]="sloViewerTab === 'history'">
+              {{ selectedSlo.name | slice:0:35 }}
+            </span>
+          </div>
+
+          <!-- ── TAB: ORGANIZATIONS ── -->
+          <div *ngIf="sloViewerTab === 'orgs'" class="slo-tab-content">
+            <div *ngIf="dbOrgsLoading" class="slo-loading">
+              <div class="slo-spinner"></div>
+              <p>Loading organizations...</p>
+            </div>
+            <div *ngIf="dbOrgsError" class="slo-error-box">⚠️ {{ dbOrgsError }}</div>
+
+            <div class="slo-section-bar" *ngIf="!dbOrgsLoading && dbOrganizations.length > 0" style="margin-bottom: 1.25rem;">
+              <h3>Organizations ({{ dbOrganizations.length }})</h3>
+              <span class="slo-count-badge">Click an organization to view Datadog SLOs</span>
+            </div>
+
+            <div class="slo-org-grid" *ngIf="!dbOrgsLoading && !dbOrgsError">
+              <div *ngIf="dbOrganizations.length === 0" class="slo-empty">
+                <span>🏢</span>
+                <p>No organizations found in database.</p>
+              </div>
+              <div class="slo-org-card" *ngFor="let org of dbOrganizations" (click)="selectOrgForSlos(org)">
+                <div class="slo-org-icon">🏢</div>
+                <div class="slo-org-info">
+                  <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); margin: 0;">{{ org.orgName }}</h3>
+                  <p style="font-size: 0.8rem; color: var(--brand-primary); font-weight: 600; margin-top: 0.25rem;">Client Infrastructure & SLOs</p>
+                </div>
+                <div class="slo-org-arrow">›</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TAB: SLO LIST ── -->
+          <div *ngIf="sloViewerTab === 'slos'" class="slo-tab-content">
+            <div class="slo-section-bar">
+              <h3>SLOs for <strong>{{ selectedOrg?.orgName }}</strong></h3>
+              <span class="slo-count-badge">{{ orgSlos.length }} SLOs</span>
+            </div>
+
+            <div *ngIf="orgSlosLoading" class="slo-loading">
+              <div class="slo-spinner"></div>
+              <p>Fetching SLOs from Datadog...</p>
+            </div>
+            <div *ngIf="orgSlosError" class="slo-error-box">⚠️ {{ orgSlosError }}</div>
+
+            <div *ngIf="!orgSlosLoading && orgSlos.length === 0 && !orgSlosError" class="slo-empty">
+              <span>📊</span>
+              <p>No SLOs found for this organization.</p>
+            </div>
+
+            <div class="slo-list" *ngIf="!orgSlosLoading && orgSlos.length > 0">
+              <div class="slo-row" *ngFor="let slo of orgSlos" (click)="selectSloForHistory(slo)">
+                <div class="slo-row-left">
+                  <span class="slo-type-badge" [ngClass]="slo.type === 'monitor' ? 'badge-monitor' : 'badge-metric'">
+                    {{ slo.type | uppercase }}
+                  </span>
+                  <div class="slo-row-info">
+                    <h4>{{ slo.name }}</h4>
+                    <div *ngIf="slo.targetUrls && slo.targetUrls.length > 0" style="display:flex; flex-wrap:wrap; gap:0.3rem; margin:0.25rem 0;">
+                      <a *ngFor="let url of slo.targetUrls" [href]="url" target="_blank"
+                        style="color: var(--brand-primary); font-weight: 600; font-size: 0.78rem; text-decoration: underline; background: rgba(123,31,162,0.06); padding: 0.15rem 0.5rem; border-radius: 6px;">
+                        🌐 {{ url }}
+                      </a>
+                    </div>
+                    <p *ngIf="(!slo.targetUrls || slo.targetUrls.length === 0) && slo.targetUrl" style="color: var(--brand-primary); font-weight: 600; font-size: 0.78rem; margin: 0.2rem 0;">
+                      🌐 {{ slo.targetUrl }}
+                    </p>
+                    <p *ngIf="slo.description">{{ slo.description | slice:0:80 }}{{ slo.description.length > 80 ? '...' : '' }}</p>
+                    <div class="slo-tags" *ngIf="slo.tags.length > 0">
+                      <span class="slo-tag" *ngFor="let tag of slo.tags | slice:0:4">{{ tag }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="slo-row-right">
+                  <div class="slo-target" *ngIf="slo.targetThreshold !== null">
+                    <span class="slo-target-value">{{ slo.targetThreshold }}%</span>
+                    <span class="slo-target-label">Target</span>
+                  </div>
+                  <div class="slo-timeframe" *ngIf="slo.timeframe">{{ slo.timeframe }}</div>
+                  <span class="slo-drill-btn">📈 History</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TAB: SLO HISTORY ── -->
+          <div *ngIf="sloViewerTab === 'history'" class="slo-tab-content">
+            <div class="slo-section-bar" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+              <h3>History — <strong>{{ selectedSlo?.name }}</strong></h3>
+              <!-- All Target URLs Badges -->
+              <div *ngIf="$any(sloHistory?.overall)?.targetUrls?.length > 0"
+                style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
+                <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-dark);">🌐 Monitored URLs ({{ $any(sloHistory?.overall)?.targetUrls?.length }}):</span>
+                <a *ngFor="let u of $any(sloHistory?.overall)?.targetUrls" [href]="u" target="_blank"
+                  style="font-size: 0.8rem; background: rgba(123, 31, 162, 0.08); padding: 0.3rem 0.75rem; border-radius: 8px; color: var(--brand-primary); font-weight: 600; text-decoration: underline;">
+                  🌐 {{ u }}
+                </a>
+              </div>
+              <div *ngIf="!$any(sloHistory?.overall)?.targetUrls?.length && sloHistory?.overall?.targetUrl" style="font-size: 0.85rem; background: rgba(123, 31, 162, 0.08); padding: 0.35rem 0.85rem; border-radius: 8px; color: var(--brand-primary); font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem;">
+                <span>🌐 Target URL:</span>
+                <a [href]="sloHistory?.overall?.targetUrl" target="_blank" style="color: var(--brand-primary); text-decoration: underline;">
+                  {{ sloHistory?.overall?.targetUrl }}
+                </a>
+              </div>
+            </div>
+
+            <!-- Date Range Filter Control Bar -->
+            <div class="slo-date-filter-bar">
+              <div class="slo-date-presets">
+                <span class="slo-preset-label">Interval:</span>
+                <button class="btn-slo-preset" [class.active]="sloHistoryPreset === '7d'" (click)="setSloDatePreset('7d')">7 Days</button>
+                <button class="btn-slo-preset" [class.active]="sloHistoryPreset === '30d'" (click)="setSloDatePreset('30d')">30 Days</button>
+                <button class="btn-slo-preset" [class.active]="sloHistoryPreset === '90d'" (click)="setSloDatePreset('90d')">90 Days</button>
+              </div>
+
+              <div class="slo-date-inputs">
+                <div class="slo-date-group">
+                  <label>From (Start Date)</label>
+                  <input type="date" [(ngModel)]="sloHistoryStartDate" (change)="sloHistoryPreset = 'custom'">
+                </div>
+                <div class="slo-date-group">
+                  <label>To (End Date)</label>
+                  <input type="date" [(ngModel)]="sloHistoryEndDate" (change)="sloHistoryPreset = 'custom'">
+                </div>
+                <button class="btn-slo-apply-filter" (click)="applySloCustomDateRange()">
+                  <span>🔍</span> Apply Range
+                </button>
+              </div>
+            </div>
+
+            <div *ngIf="sloHistoryLoading" class="slo-loading">
+              <div class="slo-spinner"></div>
+              <p>Fetching SLO history for selected range ({{ sloHistoryStartDate }} to {{ sloHistoryEndDate }})...</p>
+            </div>
+            <div *ngIf="sloHistoryError" class="slo-error-box">⚠️ {{ sloHistoryError }}</div>
+
+            <!-- KPI Cards -->
+            <div class="slo-kpi-row" *ngIf="sloHistory && !sloHistoryLoading">
+              <div class="slo-kpi-card">
+                <div class="slo-kpi-label">Uptime</div>
+                <div class="slo-kpi-value" [style.color]="getUptimeColor(sloHistory.overall.uptime)">
+                  {{ getUptimeLabel(sloHistory.overall.uptime) }}
+                </div>
+              </div>
+              <div class="slo-kpi-card">
+                <div class="slo-kpi-label">Total Downtime</div>
+                <div class="slo-kpi-value" [style.color]="(sloHistory.overall.downtimeMins || 0) > 0 ? '#ef4444' : '#10b981'">
+                  {{ sloHistory.overall.downtimeMins !== null ? formatDuration(sloHistory.overall.downtimeMins) : '0m' }}
+                </div>
+              </div>
+              <div class="slo-kpi-card">
+                <div class="slo-kpi-label">SLI Value</div>
+                <div class="slo-kpi-value" style="color: var(--brand-primary);">
+                  {{ sloHistory.overall.sliValue !== null ? (sloHistory.overall.sliValue | number:'1.2-4') + '%' : 'N/A' }}
+                </div>
+              </div>
+              <div class="slo-kpi-card" [ngClass]="getBudgetClass(sloHistory.overall.errorBudgetRemaining)">
+                <div class="slo-kpi-label">Error Budget Remaining</div>
+                <div class="slo-kpi-value">
+                  {{ sloHistory.overall.errorBudgetRemaining !== null ? (sloHistory.overall.errorBudgetRemaining | number:'1.1-2') + '%' : '100%' }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Failure Events Table -->
+            <div *ngIf="sloHistory && !sloHistoryLoading">
+              <div class="slo-section-bar" style="margin-top: 1.5rem;">
+                <h3>⚠️ Failure Events ({{ sloHistoryStartDate }} → {{ sloHistoryEndDate }})</h3>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                  <span class="slo-count-badge"
+                    [style.background]="sloHistory.downtimeHistory.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)'"
+                    [style.color]="sloHistory.downtimeHistory.length > 0 ? '#ef4444' : '#10b981'">
+                    {{ sloHistory.downtimeHistory.length }} events
+                  </span>
+                  <span *ngIf="sloHistory.overall.excludedDowntimeMins && sloHistory.overall.excludedDowntimeMins > 0"
+                    class="slo-count-badge" style="background:rgba(16,185,129,0.12); color:#10b981;">
+                    ✅ {{ formatDuration(sloHistory.overall.excludedDowntimeMins) }} corrected
+                  </span>
+                </div>
+              </div>
+
+              <!-- Correction Summary Banner -->
+              <div *ngIf="sloHistory.overall.excludedDowntimeMins && sloHistory.overall.excludedDowntimeMins > 0"
+                style="background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(16,185,129,0.04) 100%);
+                       border: 1.5px solid rgba(16,185,129,0.3); border-radius: 12px; padding: 0.85rem 1.25rem;
+                       display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                <span style="font-size: 1.5rem;">🛡️</span>
+                <div>
+                  <div style="font-weight: 800; color: #10b981; font-size: 0.9rem;">SLO Correction Applied</div>
+                  <div style="font-size: 0.8rem; color: var(--text-muted);">
+                    <strong>{{ formatDuration(sloHistory.overall.excludedDowntimeMins) }}</strong> of downtime excluded from SLO calculation.
+                    Effective Uptime: <strong style="color: #10b981;">{{ getUptimeLabel(sloHistory.overall.uptime) }}</strong>
+                    (Raw: <span style="color:#f59e0b;">{{ getUptimeLabel(sloHistory.overall.rawUptime || null) }}</span>)
+                  </div>
+                </div>
+              </div>
+
+              <div *ngIf="sloHistory.downtimeHistory.length === 0" class="slo-empty slo-healthy">
+                <span>✅</span>
+                <p>No failure events found for selected interval.</p>
+                <small>This SLO was fully compliant between {{ sloHistoryStartDate }} and {{ sloHistoryEndDate }}.</small>
+              </div>
+
+              <div class="table-container" *ngIf="sloHistory.downtimeHistory.length > 0"
+                style="border: 1px solid var(--border-color); border-radius: 12px; background: white; overflow-x: auto; box-shadow: var(--shadow-sm);">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Start Date & Time</th>
+                      <th>End Date & Time</th>
+                      <th>Target URL</th>
+                      <th>Datadog Downtime</th>
+                      <th style="text-align:center;">Duration</th>
+                      <th style="text-align:center;">Status</th>
+                      <th style="text-align:center;">Included in SLO</th>
+                      <th style="text-align:center;">Correct / Restore</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let ev of sloHistory.downtimeHistory"
+                      [style.opacity]="ev.isExcluded ? '0.65' : '1'"
+                      [style.background]="ev.isExcluded ? 'rgba(16,185,129,0.04)' : 'white'">
+                      <td style="font-size: 0.83rem; font-weight:600; color: var(--text-dark);">
+                        {{ formatTimestamp(ev.timestamp) }}
+                      </td>
+                      <td style="font-size: 0.83rem; color: var(--text-muted);">
+                        {{ formatTimestamp(ev.timestamp + ev.durationMins * 60000) }}
+                      </td>
+                      <td>
+                        <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                          <a *ngIf="ev.url" [href]="ev.url" target="_blank"
+                            style="color: var(--brand-primary); font-size: 0.78rem; font-weight:600; text-decoration:underline; max-width: 220px; display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                            🌐 {{ ev.url }}
+                          </a>
+                          <span *ngIf="!ev.url" style="color: var(--text-muted); font-size: 0.78rem;">—</span>
+
+                          <!-- Failure Cause Badge -->
+                          <span *ngIf="ev.failureCause === 'Response Time'"
+                            style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.12); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(245,158,11,0.3); width:fit-content;">
+                            ⏱️ Response Time
+                            <span *ngIf="ev.responseTimeThreshold" style="font-weight:500; opacity:0.85;">(> {{ev.responseTimeThreshold}}ms)</span>
+                          </span>
+                          <span *ngIf="ev.failureCause === 'Downtime' || !ev.failureCause"
+                            style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#ef4444; background:rgba(239,68,68,0.1); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(239,68,68,0.25); width:fit-content;">
+                            🔴 Downtime
+                          </span>
+
+                          <span *ngIf="ev.isMuted"
+                            style="display:inline-block; font-size:0.68rem; font-weight:700; color:#7b1fa2; background:rgba(123,31,162,0.1); padding:0.1rem 0.4rem; border-radius:4px; width:fit-content;">
+                            🔇 Muted in Datadog
+                          </span>
+                          <span *ngIf="!ev.isMuted"
+                            style="display:inline-block; font-size:0.68rem; font-weight:600; color:#6b7280; background:rgba(107,114,128,0.08); padding:0.1rem 0.4rem; border-radius:4px; width:fit-content;">
+                            🔔 Not Muted
+                          </span>
+                        </div>
+                      </td>
+                      <td style="font-size: 0.78rem;">
+                        <span *ngIf="ev.datadogDowntimeWindow && ev.datadogDowntimeWindow !== 'None'"
+                          style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.08); padding: 0.2rem 0.5rem; border-radius: 6px; display: inline-block;">
+                          🕒 {{ ev.datadogDowntimeWindow }}
+                        </span>
+                        <span *ngIf="!ev.datadogDowntimeWindow || ev.datadogDowntimeWindow === 'None'"
+                          style="color: #9ca3af; font-style: italic;">
+                          —
+                        </span>
+                      </td>
+                      <td style="text-align:center;">
+                        <span [style.text-decoration]="ev.isExcluded ? 'line-through' : 'none'"
+                          [style.color]="ev.isExcluded ? '#10b981' : '#ef4444'"
+                          style="font-weight: 800; font-size: 0.9rem;">
+                          {{ formatDuration(ev.durationMins) }}
+                        </span>
+                      </td>
+                      <td style="text-align:center;">
+                        <span class="slo-status-badge"
+                          [class.badge-breach]="ev.status === 'BREACH' && !ev.isExcluded"
+                          [class.badge-warning]="ev.status === 'WARNING' && !ev.isExcluded"
+                          [style.background]="ev.isExcluded ? 'rgba(16,185,129,0.12)' : ''"
+                          [style.color]="ev.isExcluded ? '#10b981' : ''">
+                          {{ ev.isExcluded ? '✅ EXCLUDED' : (ev.status === 'BREACH' ? '🔴 BREACH' : '🟡 WARNING') }}
+                        </span>
+                      </td>
+                      <td style="text-align:center;">
+                        <span style="font-size:0.75rem; color:var(--text-muted);">
+                          {{ ev.isExcluded ? '✅ Not counted' : '⚠️ Counted' }}
+                        </span>
+                        <span *ngIf="ev.isExcluded" style="display:block; font-size:0.7rem; color:#10b981; font-weight:600;">
+                          by {{ ev.excludedBy }}
+                        </span>
+                      </td>
+                      <td style="text-align:center;">
+                        <button class="btn-slo-correct"
+                          [class.btn-slo-restore]="ev.isExcluded"
+                          [class.btn-disabled]="ev.isMuted !== true && !ev.isExcluded"
+                          [disabled]="ev.isMuted !== true && !ev.isExcluded"
+                          (click)="(ev.isMuted === true || ev.isExcluded) && toggleDowntimeExclusion(ev)"
+                          [title]="ev.isMuted !== true && !ev.isExcluded ? 'Correction disabled: URL is NOT muted in Datadog' : (ev.isExcluded ? 'Restore this event to SLO calculation' : 'Exclude this downtime from SLO calculation')">
+                          {{ ev.isExcluded ? '↩ Restore' : '🔧 Correct' }}
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      <!-- /SLO Guard section -->
+      </div>
+
+
+    <!-- /content-body -->
     </div>
+  <!-- /main-content -->
   </main>
 
   <!-- Add/Edit Modal -->
@@ -504,4 +900,431 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════════════════════════
+       SLO VIEWER OVERLAY — Datadog SLOs per Organization
+  ══════════════════════════════════════════════════════════════════ -->
+  <div class="slo-viewer-overlay" *ngIf="sloViewerActive">
+    <div class="slo-viewer-panel">
+
+      <!-- Panel Header -->
+      <div class="slo-panel-header">
+        <div class="slo-panel-title">
+          <span class="slo-panel-icon">📡</span>
+          <div>
+            <h2>SLO Viewer</h2>
+            <p>Real-time Datadog SLO monitoring per organization</p>
+          </div>
+        </div>
+        <button class="slo-close-btn" (click)="closeSloViewer()">✕</button>
+      </div>
+
+      <!-- Breadcrumb Navigation -->
+      <div class="slo-breadcrumb">
+        <span class="slo-crumb" [class.active]="sloViewerTab === 'orgs'" (click)="sloViewerTab = 'orgs'; selectedOrg = null; selectedSlo = null;">
+          🏢 Organizations
+        </span>
+        <span class="slo-crumb-sep" *ngIf="selectedOrg">›</span>
+        <span class="slo-crumb" *ngIf="selectedOrg" [class.active]="sloViewerTab === 'slos'" (click)="sloViewerTab = 'slos'; selectedSlo = null;">
+          {{ selectedOrg.orgName }}
+        </span>
+        <span class="slo-crumb-sep" *ngIf="selectedSlo">›</span>
+        <span class="slo-crumb" *ngIf="selectedSlo" [class.active]="sloViewerTab === 'history'">
+          {{ selectedSlo.name | slice:0:30 }}
+        </span>
+      </div>
+
+      <!-- ── TAB: ORGANIZATIONS ── -->
+      <div *ngIf="sloViewerTab === 'orgs'" class="slo-tab-content">
+        <div *ngIf="dbOrgsLoading" class="slo-loading">
+          <div class="slo-spinner"></div>
+          <p>Loading organizations...</p>
+        </div>
+        <div *ngIf="dbOrgsError" class="slo-error-box">⚠️ {{ dbOrgsError }}</div>
+
+        <div class="slo-section-bar" *ngIf="!dbOrgsLoading && dbOrganizations.length > 0" style="margin-bottom: 1.25rem;">
+          <h3>Organizations ({{ dbOrganizations.length }})</h3>
+          <span class="slo-count-badge">Click an organization to view SLOs</span>
+        </div>
+
+        <div class="slo-org-grid" *ngIf="!dbOrgsLoading && !dbOrgsError">
+          <div *ngIf="dbOrganizations.length === 0" class="slo-empty">
+            <span>🏢</span>
+            <p>No organizations found in database.</p>
+          </div>
+          <div class="slo-org-card" *ngFor="let org of dbOrganizations" (click)="selectOrgForSlos(org)">
+            <div class="slo-org-icon">🏢</div>
+            <div class="slo-org-info">
+              <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); margin: 0;">{{ org.orgName }}</h3>
+              <p style="font-size: 0.8rem; color: var(--brand-primary); font-weight: 600; margin-top: 0.25rem;">Client Infrastructure & SLOs</p>
+            </div>
+            <div class="slo-org-arrow">›</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TAB: SLO LIST ── -->
+      <div *ngIf="sloViewerTab === 'slos'" class="slo-tab-content">
+        <div class="slo-section-bar">
+          <h3>SLOs for <strong>{{ selectedOrg?.orgName }}</strong></h3>
+          <span class="slo-count-badge">{{ orgSlos.length }} SLOs</span>
+        </div>
+
+        <div *ngIf="orgSlosLoading" class="slo-loading">
+          <div class="slo-spinner"></div>
+          <p>Fetching SLOs from Datadog...</p>
+        </div>
+        <div *ngIf="orgSlosError" class="slo-error-box">⚠️ {{ orgSlosError }}</div>
+
+        <div *ngIf="!orgSlosLoading && orgSlos.length === 0 && !orgSlosError" class="slo-empty">
+          <span>📊</span>
+          <p>No SLOs found for this organization.</p>
+        </div>
+
+        <div class="slo-list" *ngIf="!orgSlosLoading && orgSlos.length > 0">
+          <div class="slo-row" *ngFor="let slo of orgSlos" (click)="selectSloForHistory(slo)">
+            <div class="slo-row-left">
+              <span class="slo-type-badge" [ngClass]="slo.type === 'monitor' ? 'badge-monitor' : 'badge-metric'">
+                {{ slo.type | uppercase }}
+              </span>
+              <div class="slo-row-info">
+                <h4>{{ slo.name }}</h4>
+                <div *ngIf="slo.targetUrls && slo.targetUrls.length > 0" style="display:flex; flex-wrap:wrap; gap:0.3rem; margin:0.25rem 0;">
+                  <a *ngFor="let url of slo.targetUrls" [href]="url" target="_blank"
+                    style="color: var(--brand-primary); font-weight: 600; font-size: 0.78rem; text-decoration: underline; background: rgba(123,31,162,0.06); padding: 0.15rem 0.5rem; border-radius: 6px;">
+                    🌐 {{ url }}
+                  </a>
+                </div>
+                <p *ngIf="(!slo.targetUrls || slo.targetUrls.length === 0) && slo.targetUrl" style="color: var(--brand-primary); font-weight: 600; font-size: 0.78rem; margin: 0.2rem 0;">
+                  🌐 {{ slo.targetUrl }}
+                </p>
+                <p *ngIf="slo.description">{{ slo.description | slice:0:80 }}{{ slo.description.length > 80 ? '...' : '' }}</p>
+                <div class="slo-tags" *ngIf="slo.tags.length > 0">
+                  <span class="slo-tag" *ngFor="let tag of slo.tags | slice:0:4">{{ tag }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="slo-row-right">
+              <div class="slo-target" *ngIf="slo.targetThreshold !== null">
+                <span class="slo-target-value">{{ slo.targetThreshold }}%</span>
+                <span class="slo-target-label">Target</span>
+              </div>
+              <div class="slo-timeframe" *ngIf="slo.timeframe">{{ slo.timeframe }}</div>
+              <span class="slo-drill-btn">📈 History</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── TAB: SLO HISTORY ── -->
+      <div *ngIf="sloViewerTab === 'history'" class="slo-tab-content">
+        <div class="slo-section-bar" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+          <h3>History — <strong>{{ selectedSlo?.name }}</strong></h3>
+          <!-- All Target URLs Badges -->
+          <div *ngIf="$any(sloHistory?.overall)?.targetUrls?.length > 0"
+            style="display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
+            <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-dark);">🌐 Monitored URLs ({{ $any(sloHistory?.overall)?.targetUrls?.length }}):</span>
+            <a *ngFor="let u of $any(sloHistory?.overall)?.targetUrls" [href]="u" target="_blank"
+              style="font-size: 0.8rem; background: rgba(123, 31, 162, 0.08); padding: 0.3rem 0.75rem; border-radius: 8px; color: var(--brand-primary); font-weight: 600; text-decoration: underline;">
+              🌐 {{ u }}
+            </a>
+          </div>
+          <div *ngIf="!$any(sloHistory?.overall)?.targetUrls?.length && sloHistory?.overall?.targetUrl" style="font-size: 0.85rem; background: rgba(123, 31, 162, 0.08); padding: 0.35rem 0.85rem; border-radius: 8px; color: var(--brand-primary); font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem;">
+            <span>🌐 Target URL:</span>
+            <a [href]="sloHistory?.overall?.targetUrl" target="_blank" style="color: var(--brand-primary); text-decoration: underline;">
+              {{ sloHistory?.overall?.targetUrl }}
+            </a>
+          </div>
+        </div>
+
+        <!-- Date Range Filter Control Bar -->
+        <div class="slo-date-filter-bar">
+          <div class="slo-date-presets">
+            <span class="slo-preset-label">Interval:</span>
+            <button class="btn-slo-preset" [class.active]="sloHistoryPreset === '7d'" (click)="setSloDatePreset('7d')">7 Days</button>
+            <button class="btn-slo-preset" [class.active]="sloHistoryPreset === '30d'" (click)="setSloDatePreset('30d')">30 Days</button>
+            <button class="btn-slo-preset" [class.active]="sloHistoryPreset === '90d'" (click)="setSloDatePreset('90d')">90 Days</button>
+          </div>
+
+          <div class="slo-date-inputs">
+            <div class="slo-date-group">
+              <label>From (Start Date)</label>
+              <input type="date" [(ngModel)]="sloHistoryStartDate" (change)="sloHistoryPreset = 'custom'">
+            </div>
+            <div class="slo-date-group">
+              <label>To (End Date)</label>
+              <input type="date" [(ngModel)]="sloHistoryEndDate" (change)="sloHistoryPreset = 'custom'">
+            </div>
+            <button class="btn-slo-apply-filter" (click)="applySloCustomDateRange()">
+              <span>🔍</span> Apply Range
+            </button>
+          </div>
+        </div>
+
+        <div *ngIf="sloHistoryLoading" class="slo-loading">
+          <div class="slo-spinner"></div>
+          <p>Fetching SLO history for selected range ({{ sloHistoryStartDate }} to {{ sloHistoryEndDate }})...</p>
+        </div>
+        <div *ngIf="sloHistoryError" class="slo-error-box">⚠️ {{ sloHistoryError }}</div>
+
+        <!-- KPI Cards -->
+        <div class="slo-kpi-row" *ngIf="sloHistory && !sloHistoryLoading">
+          <div class="slo-kpi-card">
+            <div class="slo-kpi-label">Uptime</div>
+            <div class="slo-kpi-value" [style.color]="getUptimeColor(sloHistory.overall.uptime)">
+              {{ getUptimeLabel(sloHistory.overall.uptime) }}
+            </div>
+          </div>
+          <div class="slo-kpi-card">
+            <div class="slo-kpi-label">Total Downtime</div>
+            <div class="slo-kpi-value" [style.color]="(sloHistory.overall.downtimeMins || 0) > 0 ? '#ef4444' : '#10b981'">
+              {{ sloHistory.overall.downtimeMins !== null ? formatDuration(sloHistory.overall.downtimeMins) : '0m' }}
+            </div>
+          </div>
+          <div class="slo-kpi-card">
+            <div class="slo-kpi-label">SLI Value</div>
+            <div class="slo-kpi-value" style="color: var(--brand-primary);">
+              {{ sloHistory.overall.sliValue !== null ? (sloHistory.overall.sliValue | number:'1.2-4') + '%' : 'N/A' }}
+            </div>
+          </div>
+          <div class="slo-kpi-card" [ngClass]="getBudgetClass(sloHistory.overall.errorBudgetRemaining)">
+            <div class="slo-kpi-label">Error Budget Remaining</div>
+            <div class="slo-kpi-value">
+              {{ sloHistory.overall.errorBudgetRemaining !== null ? (sloHistory.overall.errorBudgetRemaining | number:'1.1-2') + '%' : '100%' }}
+            </div>
+          </div>
+        </div>
+
+        <!-- Failure Events Table -->
+        <div *ngIf="sloHistory && !sloHistoryLoading">
+          <div class="slo-section-bar" style="margin-top: 1.5rem;">
+            <h3>⚠️ Failure Events ({{ sloHistoryStartDate }} → {{ sloHistoryEndDate }})</h3>
+            <div style="display:flex; gap:0.5rem; align-items:center;">
+              <span class="slo-count-badge"
+                [style.background]="sloHistory.downtimeHistory.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)'"
+                [style.color]="sloHistory.downtimeHistory.length > 0 ? '#ef4444' : '#10b981'">
+                {{ sloHistory.downtimeHistory.length }} events
+              </span>
+              <span *ngIf="sloHistory.overall.excludedDowntimeMins && sloHistory.overall.excludedDowntimeMins > 0"
+                class="slo-count-badge" style="background:rgba(16,185,129,0.12); color:#10b981;">
+                ✅ {{ formatDuration(sloHistory.overall.excludedDowntimeMins) }} corrected
+              </span>
+            </div>
+          </div>
+
+          <!-- Correction Summary Banner -->
+          <div *ngIf="sloHistory.overall.excludedDowntimeMins && sloHistory.overall.excludedDowntimeMins > 0"
+            style="background: linear-gradient(135deg, rgba(16,185,129,0.08) 0%, rgba(16,185,129,0.04) 100%);
+                   border: 1.5px solid rgba(16,185,129,0.3); border-radius: 12px; padding: 0.85rem 1.25rem;
+                   display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+            <span style="font-size: 1.5rem;">🛡️</span>
+            <div>
+              <div style="font-weight: 800; color: #10b981; font-size: 0.9rem;">SLO Correction Applied</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted);">
+                <strong>{{ formatDuration(sloHistory.overall.excludedDowntimeMins) }}</strong> of downtime excluded from SLO calculation.
+                Effective Uptime: <strong style="color: #10b981;">{{ getUptimeLabel(sloHistory.overall.uptime) }}</strong>
+                (Raw: <span style="color:#f59e0b;">{{ getUptimeLabel(sloHistory.overall.rawUptime || null) }}</span>)
+              </div>
+            </div>
+          </div>
+
+          <div *ngIf="sloHistory.downtimeHistory.length === 0" class="slo-empty slo-healthy">
+            <span>✅</span>
+            <p>No failure events found for selected interval.</p>
+            <small>This SLO was fully compliant between {{ sloHistoryStartDate }} and {{ sloHistoryEndDate }}.</small>
+          </div>
+
+          <div class="table-container" *ngIf="sloHistory.downtimeHistory.length > 0"
+            style="border: 1px solid var(--border-color); border-radius: 12px; background: white; overflow-x: auto; box-shadow: var(--shadow-sm);">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Start Date & Time</th>
+                  <th>End Date & Time</th>
+                  <th>Target URL</th>
+                  <th>Datadog Downtime</th>
+                  <th style="text-align:center;">Duration</th>
+                  <th style="text-align:center;">Status</th>
+                  <th style="text-align:center;">Included in SLO</th>
+                  <th style="text-align:center;">Correct / Restore</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let ev of sloHistory.downtimeHistory"
+                  [style.opacity]="ev.isExcluded ? '0.65' : '1'"
+                  [style.background]="ev.isExcluded ? 'rgba(16,185,129,0.04)' : 'white'">
+                  <td style="font-size: 0.83rem; font-weight:600; color: var(--text-dark);">
+                    {{ formatTimestamp(ev.timestamp) }}
+                  </td>
+                  <td style="font-size: 0.83rem; color: var(--text-muted);">
+                    {{ formatTimestamp(ev.timestamp + ev.durationMins * 60000) }}
+                  </td>
+                  <td>
+                    <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                      <a *ngIf="ev.url" [href]="ev.url" target="_blank"
+                        style="color: var(--brand-primary); font-size: 0.78rem; font-weight:600; text-decoration:underline; max-width: 220px; display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                        🌐 {{ ev.url }}
+                      </a>
+                      <span *ngIf="!ev.url" style="color: var(--text-muted); font-size: 0.78rem;">—</span>
+
+                      <!-- Failure Cause Badge -->
+                      <span *ngIf="ev.failureCause === 'Response Time'"
+                        style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.12); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(245,158,11,0.3); width:fit-content;">
+                        ⏱️ Response Time
+                        <span *ngIf="ev.responseTimeThreshold" style="font-weight:500; opacity:0.85;">(> {{ev.responseTimeThreshold}}ms)</span>
+                      </span>
+                      <span *ngIf="ev.failureCause === 'Downtime' || !ev.failureCause"
+                        style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#ef4444; background:rgba(239,68,68,0.1); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(239,68,68,0.25); width:fit-content;">
+                        🔴 Downtime
+                      </span>
+
+                      <span *ngIf="ev.isMuted"
+                        style="display:inline-block; font-size:0.68rem; font-weight:700; color:#7b1fa2; background:rgba(123,31,162,0.1); padding:0.1rem 0.4rem; border-radius:4px; width:fit-content;">
+                        🔇 Muted in Datadog
+                      </span>
+                      <span *ngIf="!ev.isMuted"
+                        style="display:inline-block; font-size:0.68rem; font-weight:600; color:#6b7280; background:rgba(107,114,128,0.08); padding:0.1rem 0.4rem; border-radius:4px; width:fit-content;">
+                        🔔 Not Muted
+                      </span>
+                    </div>
+                  </td>
+                  <td style="font-size: 0.78rem;">
+                    <span *ngIf="ev.datadogDowntimeWindow && ev.datadogDowntimeWindow !== 'None'"
+                      style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.08); padding: 0.2rem 0.5rem; border-radius: 6px; display: inline-block;">
+                      🕒 {{ ev.datadogDowntimeWindow }}
+                    </span>
+                    <span *ngIf="!ev.datadogDowntimeWindow || ev.datadogDowntimeWindow === 'None'"
+                      style="color: #9ca3af; font-style: italic;">
+                      —
+                    </span>
+                  </td>
+                  <td style="text-align:center;">
+                    <span [style.text-decoration]="ev.isExcluded ? 'line-through' : 'none'"
+                      [style.color]="ev.isExcluded ? '#10b981' : '#ef4444'"
+                      style="font-weight: 800; font-size: 0.9rem;">
+                      {{ formatDuration(ev.durationMins) }}
+                    </span>
+                  </td>
+                  <td style="text-align:center;">
+                    <span class="slo-status-badge"
+                      [class.badge-breach]="ev.status === 'BREACH' && !ev.isExcluded"
+                      [class.badge-warning]="ev.status === 'WARNING' && !ev.isExcluded"
+                      [style.background]="ev.isExcluded ? 'rgba(16,185,129,0.12)' : ''"
+                      [style.color]="ev.isExcluded ? '#10b981' : ''">
+                      {{ ev.isExcluded ? '✅ EXCLUDED' : (ev.status === 'BREACH' ? '🔴 BREACH' : '🟡 WARNING') }}
+                    </span>
+                  </td>
+                  <td style="text-align:center;">
+                    <span style="font-size:0.75rem; color:var(--text-muted);">
+                      {{ ev.isExcluded ? '✅ Not counted' : '⚠️ Counted' }}
+                    </span>
+                    <span *ngIf="ev.isExcluded" style="display:block; font-size:0.7rem; color:#10b981; font-weight:600;">
+                      by {{ ev.excludedBy }}
+                    </span>
+                  </td>
+                  <td style="text-align:center;">
+                    <button class="btn-slo-correct"
+                      [class.btn-slo-restore]="ev.isExcluded"
+                      [class.btn-disabled]="ev.isMuted !== true && !ev.isExcluded"
+                      [disabled]="ev.isMuted !== true && !ev.isExcluded"
+                      (click)="(ev.isMuted === true || ev.isExcluded) && toggleDowntimeExclusion(ev)"
+                      [title]="ev.isMuted !== true && !ev.isExcluded ? 'Correction disabled: URL is NOT muted in Datadog' : (ev.isExcluded ? 'Restore this event to SLO calculation' : 'Exclude this downtime from SLO calculation')">
+                      {{ ev.isExcluded ? '↩ Restore' : '🔧 Correct' }}
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       FLOATING META-AI / VERMGUARD AI COPILOT WIDGET
+  ══════════════════════════════════════════════════════════════════ -->
+
+  <!-- Floating Copilot Button (Bottom-Right, Meta-AI style gradient icon) -->
+  <button class="copilot-floating-btn" [class.active]="copilotOpen" (click)="toggleCopilot()" title="Ouvrir VermGuard AI Copilot">
+    <div class="copilot-btn-glow"></div>
+    <span class="copilot-icon" *ngIf="!copilotOpen">✨</span>
+    <span class="copilot-icon" *ngIf="copilotOpen">✕</span>
+    <span class="copilot-badge">AI</span>
+  </button>
+
+  <!-- Copilot Drawer Chat Window -->
+  <div class="copilot-drawer" *ngIf="copilotOpen">
+    
+    <!-- Header -->
+    <div class="copilot-header">
+      <div class="copilot-title-group">
+        <div class="copilot-avatar">✨</div>
+        <div>
+          <h3 class="copilot-title">VermGuard AI Copilot</h3>
+          <span class="copilot-status">
+            <span class="status-pulse"></span> Assistant SRE & SOC actif
+          </span>
+        </div>
+      </div>
+      <button class="copilot-close-btn" (click)="toggleCopilot()">✕</button>
+    </div>
+
+    <!-- Chat Messages Container -->
+    <div class="copilot-body" id="copilotChatBody">
+      
+      <div *ngFor="let msg of copilotMessages" class="copilot-msg-row" [class.msg-user]="msg.sender === 'user'" [class.msg-ai]="msg.sender === 'ai'">
+        <div class="msg-avatar" *ngIf="msg.sender === 'ai'">🤖</div>
+        <div class="msg-content">
+          
+          <!-- Answer text with streaming cursor -->
+          <div class="msg-bubble" style="white-space: pre-wrap;">{{ msg.text }}<span *ngIf="msg.streaming" class="stream-cursor">▍</span></div>
+
+          <!-- Direct Navigation / Action Button -->
+          <div *ngIf="msg.actionLink" style="margin-top: 0.5rem;">
+            <button class="btn-copilot-action" (click)="handleCopilotAction(msg.actionLink)">
+              {{ msg.actionLink.label }}
+            </button>
+          </div>
+
+          <!-- Suggested Quick Prompts -->
+          <div *ngIf="msg.suggestedPrompts && msg.suggestedPrompts.length > 0" class="copilot-suggestions">
+            <span *ngFor="let prompt of msg.suggestedPrompts" class="suggestion-chip" (click)="sendCopilotMessage(prompt)">
+              💡 {{ prompt }}
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Loading Spinner: only shown before first token arrives (streaming=true message is still empty) -->
+      <div class="copilot-msg-row msg-ai"
+           *ngIf="copilotLoading && copilotMessages[copilotMessages.length - 1]?.text === ''">
+        <div class="msg-avatar">🤖</div>
+        <div class="msg-content">
+          <div class="msg-bubble loading-bubble">
+            <span class="dot-flashing"></span>
+            <span style="font-size:0.8rem; color:var(--text-muted); margin-left:0.5rem;">Connexion au modèle IA...</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Input Control Footer -->
+    <div class="copilot-footer">
+      <input type="text"
+             class="copilot-input"
+             placeholder="Posez une question sur l'application..."
+             [(ngModel)]="copilotInput"
+             (keyup.enter)="sendCopilotMessage()"
+             [disabled]="copilotLoading" />
+      <button class="copilot-send-btn" (click)="sendCopilotMessage()" [disabled]="!copilotInput.trim() || copilotLoading">
+        <span>➔</span>
+      </button>
+    </div>
+
+  </div>
+
 </div>
+
