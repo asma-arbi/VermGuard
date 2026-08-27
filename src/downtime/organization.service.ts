@@ -283,13 +283,8 @@ export class OrganizationService {
 
             if (isMonMatch && isTimeMatch) {
               isMuted = true;
-              datadogDowntimeWindow = {
-                id: dt.id,
-                scope: dt.scope,
-                message: dt.message || 'Datadog Muted Window',
-                start: dtStart,
-                end: dtEnd,
-              };
+              const scopeStr = dt.scope && Array.isArray(dt.scope) ? dt.scope.join(', ') : '*';
+              datadogDowntimeWindow = `Mute #${dt.id} (${scopeStr})`;
               break;
             }
           }
