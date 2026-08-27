@@ -1179,6 +1179,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
   }
 
+  formatDowntimeWindow(win: any): string {
+    if (!win) return '';
+    if (typeof win === 'string') return win;
+    if (typeof win === 'object') {
+      if (win.id) {
+        const scopeStr = win.scope && Array.isArray(win.scope) ? win.scope.join(', ') : '*';
+        return `Mute #${win.id} (${scopeStr})`;
+      }
+    }
+    return String(win);
+  }
+
   // --- GLOBAL NOTIFICATIONS HELPERS ---
 
   triggerGlobalNotification(key: string, message: string): void {
