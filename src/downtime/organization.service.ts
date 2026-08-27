@@ -287,13 +287,10 @@ export class OrganizationService {
               const startStr = dtStart
                 ? new Date(dtStart * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : 'N/A';
-              // Mute window display: use actual mute start ➔ actual mute end (or event end if indefinite)
-              const effectiveEnd = dtEnd || endTsSec;
-              const endStr = effectiveEnd
-                ? new Date(effectiveEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                : 'N/A';
-              const suffix = dtEnd ? '' : ' ∞';
-              datadogDowntimeWindow = `${startStr} ➔ ${endStr}${suffix}`;
+              const endStr = dtEnd
+                ? new Date(dtEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : 'Permanent / Indéfini';
+              datadogDowntimeWindow = `${startStr} ➔ ${endStr}`;
               break;
             }
           }
