@@ -1182,16 +1182,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   formatDowntimeWindow(ev: any): string {
     if (!ev) return '';
     if (typeof ev === 'string') return ev;
-    if (ev.datadogDowntimeWindow) {
+    if (ev.isMuted && ev.datadogDowntimeWindow) {
       if (typeof ev.datadogDowntimeWindow === 'string') return ev.datadogDowntimeWindow;
       if (typeof ev.datadogDowntimeWindow === 'object' && ev.datadogDowntimeWindow.id) {
         return `Mute #${ev.datadogDowntimeWindow.id}`;
       }
-    }
-    if (ev.timestamp && ev.durationMins) {
-      const startStr = this.formatTimestamp(ev.timestamp);
-      const endStr = this.formatTimestamp(ev.timestamp + ev.durationMins * 60000);
-      return `${startStr} ➔ ${endStr}`;
     }
     return '';
   }

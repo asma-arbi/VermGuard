@@ -780,12 +780,12 @@
                       </td>
                       <td style="font-size: 0.78rem;">
                         <span *ngIf="formatDowntimeWindow(ev)"
-                          style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.08); padding: 0.25rem 0.6rem; border-radius: 6px; display: inline-flex; align-items:center; gap:0.3rem; border:1px solid rgba(123,31,162,0.2);">
-                          🕒 {{ formatDowntimeWindow(ev) }}
+                          style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.1); padding: 0.25rem 0.6rem; border-radius: 6px; display: inline-flex; align-items:center; gap:0.3rem; border:1px solid rgba(123,31,162,0.25);">
+                          🔇 Mute Datadog: {{ formatDowntimeWindow(ev) }}
                         </span>
                         <span *ngIf="!formatDowntimeWindow(ev)"
-                          style="color: #9ca3af; font-size: 0.78rem; font-style: italic;">
-                          No Datadog Mute Window
+                          style="color: #6b7280; font-size: 0.76rem; font-style: italic; background: rgba(107,114,128,0.06); padding: 0.2rem 0.5rem; border-radius: 4px; border: 1px dashed rgba(107,114,128,0.2);">
+                          🔔 Non Muté (Pas de Mute Datadog)
                         </span>
                       </td>
                       <td style="text-align:center;">
