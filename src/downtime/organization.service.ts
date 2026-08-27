@@ -283,8 +283,9 @@ export class OrganizationService {
 
             if (isMonMatch && isTimeMatch) {
               isMuted = true;
-              const scopeStr = dt.scope && Array.isArray(dt.scope) ? dt.scope.join(', ') : '*';
-              datadogDowntimeWindow = `Mute #${dt.id} (${scopeStr})`;
+              const startStr = dtStart ? new Date(dtStart * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
+              const endStr = dtEnd ? new Date(dtEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Indéfini';
+              datadogDowntimeWindow = `${startStr} ➔ ${endStr}`;
               break;
             }
           }

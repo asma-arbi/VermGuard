@@ -32,7 +32,7 @@ export class CopilotService {
     this.logger.log(`🤖 Processing Cloudflare LLM query: "${prompt}" (role: ${userRole})`);
 
     // 1. Rassembler le contexte système VermGuard en temps réel
-    const liveContext = await this.buildLiveSystemContext();
+    const liveContext = await this.buildLiveSystemContext(prompt);
 
     // 2. Interroger Cloudflare Workers AI LLM (Llama 3.1 8B Instruct)
     const llmAnswer = await this.queryCloudflareLlama(prompt, liveContext, userRole);
@@ -65,7 +65,7 @@ export class CopilotService {
 
     // Build context in parallel (max 4s wait)
     const liveContext = await Promise.race([
-      this.buildLiveSystemContext(),
+      this.buildLiveSystemContext(prompt),
       new Promise<string>((resolve) =>
         setTimeout(() => resolve('• Contexte partiel indisponible.\n'), 4000),
       ),
@@ -235,8 +235,12 @@ DIRECTIVES IMPORTANTES :
   /**
    * Récupère le contexte live depuis Datadog, Jira et MySQL
    */
-  private async buildLiveSystemContext(): Promise<string> {
+  /**
+   * Récupère le contexte live depuis Datadog, Jira et MySQL
+   */
+  private async buildLiveSystemContext(prompt: string = ''): Promise<string> {
     let contextStr = '';
+    const pUpper = prompt.toUpperCase();
 
     const [usersRes, orgsRes, ticketsRes] = await Promise.allSettled([
       this.usersService.findAll(),
@@ -278,23 +282,43 @@ DIRECTIVES IMPORTANTES :
       }
     }
 
-    // 2. Organizations & Datadog
+    // 2. Organizations & Real Datadog SLO Failure Events
     if (orgsRes.status === 'fulfilled' && orgsRes.value) {
       const orgs = orgsRes.value;
       contextStr += `• Organisations enregistrées (${orgs.length}) : ${orgs.map(o => o.orgName).join(', ')}\n`;
-      if (orgs.length > 0) {
-        const stt = orgs.find(o => o.orgName === 'STT') || orgs[0];
+
+      // Detect matching organizations in prompt (e.g. STT, CARMIGNAC, LIFESTAR, SOLIAM-MT, etc.)
+      const matchedOrgs = orgs.filter(o => pUpper.includes(o.orgName.toUpperCase()));
+      const targetOrgs = matchedOrgs.length > 0 ? matchedOrgs : (orgs.length > 0 ? [orgs.find(o => o.orgName === 'STT') || orgs[0]] : []);
+
+      for (const targetOrg of targetOrgs) {
         try {
-          const sloRes = await this.orgService.getSlos(stt.orgId);
-          const slo = (sloRes.slos || [])[0];
-          if (slo) {
-            const hist = await this.orgService.getSloHistory(stt.orgId, slo.id);
-            const uptime = hist.overall?.uptime ? hist.overall.uptime.toFixed(3) + '%' : '99.8%';
+          const sloRes = await this.orgService.getSlos(targetOrg.orgId);
+          const slos = sloRes.slos || [];
+          contextStr += `• SLOs Datadog pour ${targetOrg.orgName} (${slos.length} SLOs configurés) :\n`;
+
+          for (const slo of slos) {
+            const hist = await this.orgService.getSloHistory(targetOrg.orgId, slo.id);
+            const uptime = hist.overall?.uptime !== undefined ? hist.overall.uptime.toFixed(3) + '%' : '100%';
             const downtimeMins = hist.overall?.downtimeMins || 0;
-            const failureEvents = (hist.downtimeHistory || []).length;
-            contextStr += `• Statut SLO ${stt.orgName} : Uptime ${uptime}, ${downtimeMins} min de panne, ${failureEvents} événement(s) de panne récent(s).\n`;
+            const events: any[] = hist.downtimeHistory || [];
+
+            contextStr += `  - SLO "${slo.name}" : Uptime ${uptime}, ${downtimeMins} min de panne cumulées, ${events.length} événement(s) de panne récents.\n`;
+
+            if (events.length > 0) {
+              contextStr += `    Détail des pannes réelles Datadog pour ${targetOrg.orgName} :\n`;
+              events.slice(0, 8).forEach((e, idx) => {
+                const start = e.startTime ? new Date(e.startTime).toLocaleString('fr-FR') : 'Date inconnue';
+                const end = e.endTime ? new Date(e.endTime).toLocaleString('fr-FR') : 'En cours';
+                const url = e.url || 'URL non spécifiée';
+                const status = e.status || 'BREACH';
+                contextStr += `      (${idx + 1}) Du ${start} au ${end} (${e.durationMins}m) | Statut: ${status} | URL: ${url}\n`;
+              });
+            }
           }
-        } catch {}
+        } catch (err: any) {
+          this.logger.warn(`Erreur récupération SLO/Datadog pour ${targetOrg.orgName}: ${err.message}`);
+        }
       }
     }
 
@@ -305,6 +329,13 @@ DIRECTIVES IMPORTANTES :
       const saas = socTickets.saas?.length || 0;
       const support = supportTickets.onPrem?.length || 0;
       contextStr += `• Tickets Jira en cours : ${onPrem + saas} tickets SOC (${onPrem} On-Prem, ${saas} SaaS), ${support} tickets Support.\n`;
+
+      if (socTickets.onPrem && socTickets.onPrem.length > 0) {
+        contextStr += `• Exemples de tickets SOC On-Prem : ${socTickets.onPrem.slice(0, 5).map((t: any) => `${t.key} (${t.fields?.summary || 'Sans titre'})`).join(', ')}\n`;
+      }
+      if (socTickets.saas && socTickets.saas.length > 0) {
+        contextStr += `• Exemples de tickets SOC SaaS : ${socTickets.saas.slice(0, 5).map((t: any) => `${t.key} (${t.fields?.summary || 'Sans titre'})`).join(', ')}\n`;
+      }
     }
 
     return contextStr;
