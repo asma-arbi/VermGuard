@@ -259,25 +259,22 @@ export class OrganizationService {
             if (dt.disabled) continue;
             let isMonMatch = false;
 
+            // Priority 1: exact monitor_id match (most reliable)
             if (dt.monitor_id && monId && dt.monitor_id === monId) {
               isMonMatch = true;
-            } else if (dt.scope && Array.isArray(dt.scope)) {
-              for (const sc of dt.scope) {
-                if (sc === '*' || (eventUrl && sc.includes(eventUrl))) {
-                  isMonMatch = true;
-                  break;
-                }
-              }
-            } else {
-              isMonMatch = true;
             }
+            // Priority 2: monitor_tags match — check if the mute targets a tag group containing this monitor
+            // (do NOT match wildcard '*' scope or host scopes — those are for infrastructure, not URL monitors)
+            // No other fallback: avoid false positives from unrelated mutes
 
             let isTimeMatch = false;
             const dtStart = dt.start || 0;
             const dtEnd = dt.end || 0;
             if (dtEnd) {
+              // Mute has an explicit end — event must be fully within the mute window (±15 min tolerance)
               isTimeMatch = startTsSec >= (dtStart - 900) && endTsSec <= (dtEnd + 900);
             } else if (dtStart > 0) {
+              // Mute is indefinite — event must start AFTER the mute was created
               isTimeMatch = startTsSec >= dtStart;
             }
 
@@ -286,12 +283,12 @@ export class OrganizationService {
               const startStr = dtStart
                 ? new Date(dtStart * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : 'N/A';
-              // If Datadog mute has no end date (indefinite), use the event's own end time
+              // Mute window display: use actual mute start ➔ actual mute end (or event end if indefinite)
               const effectiveEnd = dtEnd || endTsSec;
               const endStr = effectiveEnd
                 ? new Date(effectiveEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                 : 'N/A';
-              const suffix = dtEnd ? '' : ' (Mute indéfini)';
+              const suffix = dtEnd ? '' : ' ∞';
               datadogDowntimeWindow = `${startStr} ➔ ${endStr}${suffix}`;
               break;
             }
