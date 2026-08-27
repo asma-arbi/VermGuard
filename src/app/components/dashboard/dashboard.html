@@ -768,11 +768,11 @@
                         </div>
                       </td>
                       <td style="font-size: 0.78rem;">
-                        <span *ngIf="formatDowntimeWindow(ev.datadogDowntimeWindow)"
+                        <span *ngIf="formatDowntimeWindow(ev)"
                           style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.08); padding: 0.25rem 0.6rem; border-radius: 6px; display: inline-flex; align-items:center; gap:0.3rem; border:1px solid rgba(123,31,162,0.2);">
-                          🕒 {{ formatDowntimeWindow(ev.datadogDowntimeWindow) }}
+                          🕒 {{ formatDowntimeWindow(ev) }}
                         </span>
-                        <span *ngIf="!formatDowntimeWindow(ev.datadogDowntimeWindow)"
+                        <span *ngIf="!formatDowntimeWindow(ev)"
                           style="color: #9ca3af; font-size: 0.78rem; font-style: italic;">
                           No Datadog Mute Window
                         </span>
