@@ -203,8 +203,12 @@ export class OrganizationService {
     const org = await this.findOne(orgId);
 
     const now = Math.floor(Date.now() / 1000);
-    const toTs = customToTs && !isNaN(customToTs) ? customToTs : now;
-    const fromTs = customFromTs && !isNaN(customFromTs) ? customFromTs : (toTs - 30 * 24 * 3600);
+    let toTs = customToTs && !isNaN(customToTs) ? Number(customToTs) : now;
+    let fromTs = customFromTs && !isNaN(customFromTs) ? Number(customFromTs) : (toTs - 30 * 24 * 3600);
+
+    if (toTs > 1e11) toTs = Math.floor(toTs / 1000);
+    if (fromTs > 1e11) fromTs = Math.floor(fromTs / 1000);
+
     const totalMinutes = Math.max(1, Math.round((toTs - fromTs) / 60));
 
     // Fetch existing exclusions from DB for this org & SLO
@@ -308,76 +312,104 @@ export class OrganizationService {
             const monUrl = monUrls.length > 0 ? monUrls[0] : (primaryUrl || null);
 
             const stateHistory = mon.history || mon.state_history || [];
+
+            // Continuous outage merging state-machine
+            const mergedEvents: Array<{ startTsSec: number; endTsSec: number; worstState: any }> = [];
+            let currentOutage: { startTsSec: number; endTsSec: number; worstState: any } | null = null;
+
             for (let i = 0; i < stateHistory.length; i++) {
               const item = stateHistory[i];
-              let startTsSec = 0;
+              let ts = 0;
               let stateCode: any = 0;
 
               if (Array.isArray(item)) {
-                startTsSec = item[0];
+                ts = item[0];
                 stateCode = item[1];
               } else if (item && typeof item === 'object') {
-                startTsSec = item.from_ts || item.timestamp || 0;
+                ts = item.from_ts || item.timestamp || 0;
                 stateCode = item.state !== undefined ? item.state : item.status;
               }
 
-              // stateCode: 1 = WARNING, 2 = ALERT (BREACH)
-              if (stateCode === 1 || stateCode === 2 || stateCode === 'alert' || stateCode === 'warning' || stateCode === 'WARN') {
-                let endTsSec = startTsSec + 1800; // Default 30 min duration
-                if (i + 1 < stateHistory.length) {
-                  const nextItem = stateHistory[i + 1];
-                  const nextTs = Array.isArray(nextItem) ? nextItem[0] : (nextItem.from_ts || nextItem.timestamp);
-                  if (nextTs > startTsSec) endTsSec = nextTs;
-                }
+              const isFailure = (stateCode === 1 || stateCode === 2 || stateCode === 'alert' || stateCode === 'warning' || stateCode === 'WARN');
 
-                const eventTs = startTsSec * 1000;
-                const dtMins = Math.max(1, Math.round((endTsSec - startTsSec) / 60));
-
-                const isExcluded = excludedTimestampsSet.has(eventTs);
-                if (isExcluded) {
-                  excludedDowntimeMins += dtMins;
+              if (isFailure) {
+                if (!currentOutage) {
+                  currentOutage = {
+                    startTsSec: ts,
+                    endTsSec: ts + 1800, // default fallback if unclosed
+                    worstState: stateCode,
+                  };
                 } else {
-                  rawDowntimeMins += dtMins;
+                  if (stateCode === 2 || stateCode === 'alert') {
+                    currentOutage.worstState = 2;
+                  }
                 }
-
-                const exclusionInfo = excludedTimestampsSet.get(eventTs);
-                const { isMuted, datadogDowntimeWindow } = await resolveDowntimeForEvent(mon.monitor_id || mon.id, monUrl, startTsSec, endTsSec);
-
-                let failureCause = 'Downtime';
-                let responseTimeThreshold = 'N/A';
-
-                const nameLower = (monName || '').toLowerCase();
-                const queryLower = (mon.query || '').toLowerCase();
-
-                if (stateCode === 1 || stateCode === 'warning' || stateCode === 'WARN' || 
-                    nameLower.includes('response') || nameLower.includes('latency') || nameLower.includes('duration') || nameLower.includes('time') || nameLower.includes('slow') || queryLower.includes('response_time') || queryLower.includes('latency')) {
-                  failureCause = 'Response Time';
-                  responseTimeThreshold = '3000ms';
-                } else if (nameLower.includes('ssl')) {
-                  failureCause = 'SSL Certificate';
-                } else if (nameLower.includes('waf') || nameLower.includes('auth')) {
-                  failureCause = 'Authentication / WAF';
-                } else {
-                  failureCause = 'Downtime';
+              } else {
+                if (currentOutage) {
+                  currentOutage.endTsSec = ts;
+                  mergedEvents.push(currentOutage);
+                  currentOutage = null;
                 }
+              }
+            }
+            if (currentOutage) {
+              mergedEvents.push(currentOutage);
+            }
 
-                downtimeEvents.push({
-                  id: eventTs,
-                  timestamp: eventTs,
-                  startTime: new Date(startTsSec * 1000).toISOString(),
-                  endTime: new Date(endTsSec * 1000).toISOString(),
-                  durationMins: dtMins,
-                  uptime: parseFloat((mon.sli_value ?? 98.0).toFixed(4)),
-                  url: monUrl,
-                  status: stateCode === 2 || stateCode === 'alert' ? 'BREACH' : 'WARNING',
-                  failureCause,
-                  responseTimeThreshold,
-                  isMuted,
-                  datadogDowntimeWindow,
-                  isExcluded,
-                  reason: exclusionInfo?.reason || 'Approved Maintenance / Outage Exclusion',
-                  excludedBy: exclusionInfo?.excludedBy || 'SOC Admin',
-                });
+            for (const ev of mergedEvents) {
+              const startTsSec = ev.startTsSec;
+              const endTsSec = ev.endTsSec;
+              const stateCode = ev.worstState;
+
+              const eventTs = startTsSec * 1000;
+              const dtMins = Math.max(1, Math.round((endTsSec - startTsSec) / 60));
+
+              const isExcluded = excludedTimestampsSet.has(eventTs);
+              if (isExcluded) {
+                excludedDowntimeMins += dtMins;
+              } else {
+                rawDowntimeMins += dtMins;
+              }
+
+              const exclusionInfo = excludedTimestampsSet.get(eventTs);
+              const { isMuted, datadogDowntimeWindow } = await resolveDowntimeForEvent(mon.monitor_id || mon.id, monUrl, startTsSec, endTsSec);
+
+              let failureCause = 'Downtime';
+              let responseTimeThreshold = 'N/A';
+
+              const nameLower = (monName || '').toLowerCase();
+              const queryLower = (mon.query || '').toLowerCase();
+
+              if (stateCode === 1 || stateCode === 'warning' || stateCode === 'WARN' || 
+                  nameLower.includes('response') || nameLower.includes('latency') || nameLower.includes('duration') || nameLower.includes('time') || nameLower.includes('slow') || queryLower.includes('response_time') || queryLower.includes('latency')) {
+                failureCause = 'Response Time';
+                responseTimeThreshold = '3000ms';
+              } else if (nameLower.includes('ssl')) {
+                failureCause = 'SSL Certificate';
+              } else if (nameLower.includes('waf') || nameLower.includes('auth')) {
+                failureCause = 'Authentication / WAF';
+              } else {
+                failureCause = 'Downtime';
+              }
+
+              downtimeEvents.push({
+                id: eventTs,
+                timestamp: eventTs,
+                startTime: new Date(startTsSec * 1000).toISOString(),
+                endTime: new Date(endTsSec * 1000).toISOString(),
+                durationMins: dtMins,
+                uptime: parseFloat((mon.sli_value ?? 98.0).toFixed(4)),
+                url: monUrl,
+                status: stateCode === 2 || stateCode === 'alert' ? 'BREACH' : 'WARNING',
+                failureCause,
+                responseTimeThreshold,
+                isMuted,
+                datadogDowntimeWindow,
+                isExcluded,
+                reason: exclusionInfo?.reason || 'Approved Maintenance / Outage Exclusion',
+                excludedBy: exclusionInfo?.excludedBy || 'SOC Admin',
+              });
+            }
               }
             }
           }

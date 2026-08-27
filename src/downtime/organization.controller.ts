@@ -28,10 +28,16 @@ export class OrganizationController {
     @Param('orgId') orgId: string,
     @Param('sloId') sloId: string,
     @Query('fromTs') fromTs?: string,
+    @Query('from_ts') from_ts?: string,
+    @Query('from') from?: string,
     @Query('toTs') toTs?: string,
+    @Query('to_ts') to_ts?: string,
+    @Query('to') to?: string,
   ): Promise<any> {
-    const parsedFrom = fromTs ? parseInt(fromTs, 10) : undefined;
-    const parsedTo = toTs ? parseInt(toTs, 10) : undefined;
+    const rawFrom = fromTs || from_ts || from;
+    const rawTo = toTs || to_ts || to;
+    const parsedFrom = rawFrom ? parseInt(rawFrom, 10) : undefined;
+    const parsedTo = rawTo ? parseInt(rawTo, 10) : undefined;
     return this.orgService.getSloHistory(orgId, sloId, parsedFrom, parsedTo);
   }
 
