@@ -263,13 +263,19 @@ export class OrganizationService {
             if (dt.disabled) continue;
             let isMonMatch = false;
 
-            // Priority 1: exact monitor_id match (most reliable)
+            // 1. Exact monitor_id match
             if (dt.monitor_id && monId && dt.monitor_id === monId) {
               isMonMatch = true;
             }
-            // Priority 2: monitor_tags match — check if the mute targets a tag group containing this monitor
-            // (do NOT match wildcard '*' scope or host scopes — those are for infrastructure, not URL monitors)
-            // No other fallback: avoid false positives from unrelated mutes
+            // 2. Scope match (wildcard '*' scope or URL match)
+            else if (dt.scope && Array.isArray(dt.scope)) {
+              for (const sc of dt.scope) {
+                if (sc === '*' || (eventUrl && sc.includes(eventUrl))) {
+                  isMonMatch = true;
+                  break;
+                }
+              }
+            }
 
             let isTimeMatch = false;
             const dtStart = dt.start || 0;
