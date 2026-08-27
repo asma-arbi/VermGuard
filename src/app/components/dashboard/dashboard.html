@@ -758,23 +758,24 @@
                           </span>
 
                           <span *ngIf="ev.isMuted"
-                            style="display:inline-block; font-size:0.68rem; font-weight:700; color:#7b1fa2; background:rgba(123,31,162,0.1); padding:0.1rem 0.4rem; border-radius:4px; width:fit-content;">
+                            style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.68rem; font-weight:700; color:#7b1fa2; background:rgba(123,31,162,0.12); padding:0.15rem 0.5rem; border-radius:4px; width:fit-content; border:1px solid rgba(123,31,162,0.25);">
                             🔇 Muted in Datadog
                           </span>
                           <span *ngIf="!ev.isMuted"
-                            style="display:inline-block; font-size:0.68rem; font-weight:600; color:#6b7280; background:rgba(107,114,128,0.08); padding:0.1rem 0.4rem; border-radius:4px; width:fit-content;">
-                            🔔 Not Muted
+                            style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.68rem; font-weight:600; color:#6b7280; background:rgba(107,114,128,0.08); padding:0.15rem 0.5rem; border-radius:4px; width:fit-content; border:1px solid rgba(107,114,128,0.2);">
+                            🔔 Unmuted Event
                           </span>
                         </div>
                       </td>
                       <td style="font-size: 0.78rem;">
-                        <span *ngIf="ev.datadogDowntimeWindow && ev.datadogDowntimeWindow !== 'None'"
-                          style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.08); padding: 0.2rem 0.5rem; border-radius: 6px; display: inline-block;">
-                          🕒 {{ ev.datadogDowntimeWindow }}
+                        <span *ngIf="ev.datadogDowntimeWindow && ev.datadogDowntimeWindow.id"
+                          style="color: #7b1fa2; font-weight: 700; background: rgba(123,31,162,0.08); padding: 0.25rem 0.6rem; border-radius: 6px; display: inline-flex; align-items:center; gap:0.3rem; border:1px solid rgba(123,31,162,0.2);"
+                          [title]="'Datadog Mute Window ID: ' + ev.datadogDowntimeWindow.id + ' | Scope: ' + (ev.datadogDowntimeWindow.scope ? ev.datadogDowntimeWindow.scope.join(', ') : '*')">
+                          🕒 Mute #{{ ev.datadogDowntimeWindow.id }}
                         </span>
-                        <span *ngIf="!ev.datadogDowntimeWindow || ev.datadogDowntimeWindow === 'None'"
-                          style="color: #9ca3af; font-style: italic;">
-                          —
+                        <span *ngIf="!ev.datadogDowntimeWindow || !ev.datadogDowntimeWindow.id"
+                          style="color: #9ca3af; font-size: 0.78rem; font-style: italic;">
+                          No Datadog Mute Window
                         </span>
                       </td>
                       <td style="text-align:center;">
