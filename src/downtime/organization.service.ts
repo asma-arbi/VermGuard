@@ -283,9 +283,16 @@ export class OrganizationService {
 
             if (isMonMatch && isTimeMatch) {
               isMuted = true;
-              const startStr = dtStart ? new Date(dtStart * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A';
-              const endStr = dtEnd ? new Date(dtEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Indéfini';
-              datadogDowntimeWindow = `${startStr} ➔ ${endStr}`;
+              const startStr = dtStart
+                ? new Date(dtStart * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : 'N/A';
+              // If Datadog mute has no end date (indefinite), use the event's own end time
+              const effectiveEnd = dtEnd || endTsSec;
+              const endStr = effectiveEnd
+                ? new Date(effectiveEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : 'N/A';
+              const suffix = dtEnd ? '' : ' (Mute indéfini)';
+              datadogDowntimeWindow = `${startStr} ➔ ${endStr}${suffix}`;
               break;
             }
           }
