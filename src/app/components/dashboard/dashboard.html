@@ -678,11 +678,17 @@
             <div *ngIf="sloHistory && !sloHistoryLoading">
               <div class="slo-section-bar" style="margin-top: 1.5rem;">
                 <h3>⚠️ Failure Events ({{ sloHistoryStartDate }} → {{ sloHistoryEndDate }})</h3>
-                <div style="display:flex; gap:0.5rem; align-items:center;">
+                <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                   <span class="slo-count-badge"
                     [style.background]="sloHistory.downtimeHistory.length > 0 ? 'rgba(239,68,68,0.12)' : 'rgba(16,185,129,0.12)'"
                     [style.color]="sloHistory.downtimeHistory.length > 0 ? '#ef4444' : '#10b981'">
-                    {{ sloHistory.downtimeHistory.length }} events
+                    {{ sloHistory.downtimeHistory.length }} Total Events
+                  </span>
+                  <span *ngIf="getCountByCause('Response Time') > 0" class="slo-count-badge" style="background: rgba(245,158,11,0.12); color: #d97706; border: 1px solid rgba(245,158,11,0.25);">
+                    ⏱️ Response Time: {{ getCountByCause('Response Time') }}
+                  </span>
+                  <span *ngIf="getCountByCause('Downtime') > 0" class="slo-count-badge" style="background: rgba(239,68,68,0.12); color: #dc2626; border: 1px solid rgba(239,68,68,0.25);">
+                    🔴 Downtime: {{ getCountByCause('Downtime') }}
                   </span>
                   <span *ngIf="sloHistory.overall.excludedDowntimeMins && sloHistory.overall.excludedDowntimeMins > 0"
                     class="slo-count-badge" style="background:rgba(16,185,129,0.12); color:#10b981;">
@@ -720,7 +726,7 @@
                     <tr>
                       <th>Start Date & Time</th>
                       <th>End Date & Time</th>
-                      <th>Target URL</th>
+                      <th>Target URL & Failure Cause</th>
                       <th>Datadog Downtime</th>
                       <th style="text-align:center;">Duration</th>
                       <th style="text-align:center;">Status</th>
@@ -739,32 +745,37 @@
                         {{ formatTimestamp(ev.timestamp + ev.durationMins * 60000) }}
                       </td>
                       <td>
-                        <div style="display:flex; flex-direction:column; gap:0.15rem;">
+                        <div style="display:flex; flex-direction:column; gap:0.25rem;">
                           <a *ngIf="ev.url" [href]="ev.url" target="_blank"
-                            style="color: var(--brand-primary); font-size: 0.78rem; font-weight:600; text-decoration:underline; max-width: 220px; display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
+                            style="color: var(--brand-primary); font-size: 0.8rem; font-weight:700; text-decoration:underline; max-width: 240px; display:block; overflow:hidden; white-space:nowrap; text-overflow:ellipsis;">
                             🌐 {{ ev.url }}
                           </a>
                           <span *ngIf="!ev.url" style="color: var(--text-muted); font-size: 0.78rem;">—</span>
 
-                          <!-- Failure Cause Badge -->
-                          <span *ngIf="ev.failureCause === 'Response Time'"
-                            style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#f59e0b; background:rgba(245,158,11,0.12); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(245,158,11,0.3); width:fit-content;">
-                            ⏱️ Response Time
-                            <span *ngIf="ev.responseTimeThreshold" style="font-weight:500; opacity:0.85;">(> {{ev.responseTimeThreshold}}ms)</span>
-                          </span>
-                          <span *ngIf="ev.failureCause === 'Downtime' || !ev.failureCause"
-                            style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#ef4444; background:rgba(239,68,68,0.1); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(239,68,68,0.25); width:fit-content;">
-                            🔴 Downtime
-                          </span>
+                          <!-- Prominent Failure Cause Badges -->
+                          <div style="display:flex; gap:0.3rem; flex-wrap:wrap; align-items:center;">
+                            <span *ngIf="ev.failureCause === 'Response Time'"
+                              style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; font-weight:800; color:#d97706; background:rgba(245,158,11,0.14); padding:0.15rem 0.55rem; border-radius:6px; border:1px solid rgba(245,158,11,0.35);">
+                              ⏱️ Response Time (> 3000ms)
+                            </span>
+                            <span *ngIf="ev.failureCause === 'Downtime' || !ev.failureCause"
+                              style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; font-weight:800; color:#dc2626; background:rgba(239,68,68,0.14); padding:0.15rem 0.55rem; border-radius:6px; border:1px solid rgba(239,68,68,0.35);">
+                              🔴 Service Downtime / Outage
+                            </span>
+                            <span *ngIf="ev.failureCause === 'SSL Certificate'"
+                              style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; font-weight:800; color:#7b1fa2; background:rgba(123,31,162,0.14); padding:0.15rem 0.55rem; border-radius:6px; border:1px solid rgba(123,31,162,0.35);">
+                              🔒 SSL Certificate Expiration
+                            </span>
+                            <span *ngIf="ev.failureCause === 'Authentication / WAF'"
+                              style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.7rem; font-weight:800; color:#0284c7; background:rgba(2,132,199,0.14); padding:0.15rem 0.55rem; border-radius:6px; border:1px solid rgba(2,132,199,0.35);">
+                              🛡️ WAF / Auth Denied
+                            </span>
 
-                          <span *ngIf="ev.isMuted"
-                            style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.68rem; font-weight:700; color:#7b1fa2; background:rgba(123,31,162,0.12); padding:0.15rem 0.5rem; border-radius:4px; width:fit-content; border:1px solid rgba(123,31,162,0.25);">
-                            🔇 Muted in Datadog
-                          </span>
-                          <span *ngIf="!ev.isMuted"
-                            style="display:inline-flex; align-items:center; gap:0.25rem; font-size:0.68rem; font-weight:600; color:#6b7280; background:rgba(107,114,128,0.08); padding:0.15rem 0.5rem; border-radius:4px; width:fit-content; border:1px solid rgba(107,114,128,0.2);">
-                            🔔 Unmuted Event
-                          </span>
+                            <span *ngIf="ev.isMuted"
+                              style="display:inline-flex; align-items:center; gap:0.2rem; font-size:0.68rem; font-weight:700; color:#7b1fa2; background:rgba(123,31,162,0.1); padding:0.1rem 0.45rem; border-radius:4px; border:1px solid rgba(123,31,162,0.2);">
+                              🔇 Datadog Muted
+                            </span>
+                          </div>
                         </div>
                       </td>
                       <td style="font-size: 0.78rem;">

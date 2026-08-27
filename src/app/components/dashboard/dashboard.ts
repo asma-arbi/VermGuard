@@ -1196,6 +1196,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return '';
   }
 
+  getCountByCause(cause: string): number {
+    if (!this.sloHistory?.downtimeHistory) return 0;
+    if (cause === 'Downtime') {
+      return this.sloHistory.downtimeHistory.filter((e: any) => e.failureCause === 'Downtime' || !e.failureCause || e.failureCause.includes('HTTP')).length;
+    }
+    return this.sloHistory.downtimeHistory.filter((e: any) => e.failureCause === cause).length;
+  }
+
   // --- GLOBAL NOTIFICATIONS HELPERS ---
 
   triggerGlobalNotification(key: string, message: string): void {
