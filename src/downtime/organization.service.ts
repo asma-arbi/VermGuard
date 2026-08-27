@@ -339,13 +339,22 @@ export class OrganizationService {
                 const exclusionInfo = excludedTimestampsSet.get(eventTs);
                 const { isMuted, datadogDowntimeWindow } = await resolveDowntimeForEvent(mon.monitor_id || mon.id, monUrl, startTsSec, endTsSec);
 
-                let failureCause = 'HTTP 5xx Server Error / Target Unreachable';
-                let responseTimeThreshold = '3000ms';
-                if (monName.toLowerCase().includes('ssl')) {
-                  failureCause = 'SSL Certificate Expiration / Handshake Failure';
-                  responseTimeThreshold = 'N/A';
-                } else if (monName.toLowerCase().includes('waf') || monName.toLowerCase().includes('auth')) {
-                  failureCause = 'Authentication / WAF Access Denied';
+                let failureCause = 'Downtime';
+                let responseTimeThreshold = 'N/A';
+
+                const nameLower = (monName || '').toLowerCase();
+                const queryLower = (mon.query || '').toLowerCase();
+
+                if (stateCode === 1 || stateCode === 'warning' || stateCode === 'WARN' || 
+                    nameLower.includes('response') || nameLower.includes('latency') || nameLower.includes('duration') || nameLower.includes('time') || nameLower.includes('slow') || queryLower.includes('response_time') || queryLower.includes('latency')) {
+                  failureCause = 'Response Time';
+                  responseTimeThreshold = '3000ms';
+                } else if (nameLower.includes('ssl')) {
+                  failureCause = 'SSL Certificate';
+                } else if (nameLower.includes('waf') || nameLower.includes('auth')) {
+                  failureCause = 'Authentication / WAF';
+                } else {
+                  failureCause = 'Downtime';
                 }
 
                 downtimeEvents.push({
