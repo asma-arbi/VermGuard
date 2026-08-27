@@ -116,7 +116,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       text: `Bonjour ! Je suis **VermGuard AI Copilot** 🤖.\n\nJe possède une vue d'ensemble en temps réel sur toute l'application : métriques Datadog, pannes, tickets Jira, et équipes SOC. Comment puis-je vous aider aujourd'hui ?`,
       suggestedPrompts: [
         'Fais-moi un résumé général',
-        'Quelles sont les pannes pour STT ?',
+        'Quelles sont les pannes récentes pour STT ?',
         'Quels sont les tickets Jira ouverts ?',
         'Qui sont les analystes du SOC ?'
       ]
