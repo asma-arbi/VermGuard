@@ -75,10 +75,6 @@
         ✕
       </button>
     </div>
-
-    <button class="btn-export" (click)="exportToCsv()" [disabled]="currentTickets.length === 0">
-      📥 Export CSV
-    </button>
   </div>
 
   <!-- SOC Tabs: On-Prem | SaaS -->
@@ -126,7 +122,6 @@
           <th>Assignee</th>
           <th>Created</th>
           <th>Updated</th>
-          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -157,11 +152,6 @@
           </td>
           <td class="date-cell">{{ formatDate(ticket.fields.created) }}</td>
           <td class="date-cell">{{ formatDate(ticket.fields.updated) }}</td>
-          <td class="actions-cell">
-            <button class="btn-action" (click)="openActionPanel(ticket)" title="Quick Actions">
-              <i class="fas fa-bolt"></i>
-            </button>
-          </td>
         </tr>
       </tbody>
     </table>
@@ -176,54 +166,4 @@
 
   </div>
 
-</div>
-
-<!-- ── QUICK ACTION MODAL ── -->
-<div class="action-modal-overlay" *ngIf="actionPanelTicket" (click)="closeActionPanel()">
-  <div class="action-modal" (click)="$event.stopPropagation()">
-    <div class="action-modal-header">
-      <h3><i class="fas fa-bolt"></i> Quick Actions</h3>
-      <span class="action-ticket-key">{{ actionPanelTicket?.key }}</span>
-      <button class="btn-close-action" (click)="closeActionPanel()">×</button>
-    </div>
-
-    <!-- Feedback messages -->
-    <div class="action-feedback success" *ngIf="actionSuccess">✅ {{ actionSuccess }}</div>
-    <div class="action-feedback error" *ngIf="actionError">❌ {{ actionError }}</div>
-
-    <div class="action-sections">
-      <!-- Section 1: Change Status -->
-      <div class="action-section">
-        <h4><i class="fas fa-exchange-alt"></i> Change Status</h4>
-        <div class="action-buttons">
-          <button class="btn-transition" (click)="doTransition('In Progress')" [disabled]="actionLoading">▶ In
-            Progress</button>
-          <button class="btn-transition" (click)="doTransition('Done')" [disabled]="actionLoading">✓ Done</button>
-          <button class="btn-transition" (click)="doTransition('To Do')" [disabled]="actionLoading">↩ To Do</button>
-        </div>
-      </div>
-
-      <!-- Section 2: Assign -->
-      <div class="action-section">
-        <h4><i class="fas fa-user-plus"></i> Assign To</h4>
-        <div class="action-input-row">
-          <input type="text" placeholder="Username or email..." [(ngModel)]="assigneeInput" class="action-input">
-          <button class="btn-do" (click)="doAssign()" [disabled]="actionLoading || !assigneeInput">
-            Assign
-          </button>
-        </div>
-      </div>
-
-      <!-- Section 3: Comment -->
-      <div class="action-section">
-        <h4><i class="fas fa-comment"></i> Add Comment</h4>
-        <textarea rows="3" placeholder="Write a quick comment..." [(ngModel)]="commentInput"
-          class="action-textarea"></textarea>
-        <button class="btn-do" (click)="doComment()" [disabled]="actionLoading || !commentInput"
-          style="margin-top: 8px; width: 100%;">
-          Post Comment
-        </button>
-      </div>
-    </div>
-  </div>
 </div>

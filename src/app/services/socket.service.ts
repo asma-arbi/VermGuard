@@ -126,4 +126,16 @@ export class SocketService {
       return () => this.socket.off('jira_tickets_updated');
     });
   }
+
+  /**
+   * Listen to evaluation updates from the backend
+   */
+  onEvaluationUpdated(): Observable<{ userId: number; userEmail?: string; userName: string; period: string; globalScore: number; isPublished: boolean }> {
+    return new Observable(observer => {
+      this.socket.on('evaluation_updated', (data) => {
+        observer.next(data);
+      });
+      return () => this.socket.off('evaluation_updated');
+    });
+  }
 }

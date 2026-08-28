@@ -53,16 +53,21 @@
         <input type="password" name="password" [(ngModel)]="formData.password" required placeholder="••••••••">
       </div>
 
-      <!-- Role selector — Sign Up only -->
+      <!-- Remember Me & Forgot Password -->
+      <div *ngIf="isLoginMode" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; margin-top: -0.2rem; margin-bottom: 0.5rem;">
+        <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; color: rgba(255,255,255,0.7); font-weight: 500;">
+          <input type="checkbox" name="rememberMe" [(ngModel)]="rememberMe" style="width: 16px; height: 16px; accent-color: #7c3aed; cursor: pointer;" />
+          Remember Me
+        </label>
+        <a href="javascript:void(0)" (click)="openForgotPasswordModal()" style="color: #c4b5fd; text-decoration: underline; font-weight: 600;">
+          Forgot Password?
+        </a>
+      </div>
+
+      <!-- Role selector — Sign Up only (SOC and Support only) -->
       <div class="form-group" *ngIf="!isLoginMode">
         <label>Role</label>
         <div class="role-chips">
-          <button type="button"
-            class="role-chip manager"
-            [class.active]="formData.role === 'manager'"
-            (click)="formData.role = 'manager'">
-            👑 Manager
-          </button>
           <button type="button"
             class="role-chip soc"
             [class.active]="formData.role === 'soc'"
@@ -95,4 +100,67 @@
     </div>
 
   </div>
+
+  <!-- Forgot Password Modal Overlay (English) -->
+  <div class="modal-overlay" *ngIf="showForgotPasswordModal" (click)="closeForgotPasswordModal()" style="position: fixed; inset: 0; background: rgba(15, 10, 30, 0.8); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 1rem;">
+    <div class="modal-content forgot-modal fade-in" (click)="$event.stopPropagation()" style="background: #1e1b4b; border: 1px solid rgba(168,85,247,0.3); border-radius: 20px; padding: 2rem; color: white; width: 100%; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+      
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem;">
+        <h3 style="font-size: 1.15rem; font-weight: 800; color: white; margin: 0;">🔒 Reset Password</h3>
+        <button (click)="closeForgotPasswordModal()" style="background: transparent; border: none; color: rgba(255,255,255,0.6); font-size: 1.2rem; cursor: pointer;">✕</button>
+      </div>
+
+      <div class="alert-danger" *ngIf="forgotError" style="margin-bottom: 1rem;">
+        ⚠️ {{ forgotError }}
+      </div>
+
+      <!-- Step 1: Verify Email -->
+      <div *ngIf="forgotStep === 'email'">
+        <p style="font-size: 0.85rem; color: rgba(255,255,255,0.7); margin-bottom: 1.25rem; line-height: 1.5;">
+          Enter your professional Vermeg email address to verify your account.
+        </p>
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label>Professional Email</label>
+          <input type="email" [(ngModel)]="forgotEmail" name="forgotEmailInput" placeholder="name@vermeg.com" (keyup.enter)="verifyForgotEmail()" />
+        </div>
+        <button class="btn-primary" type="button" (click)="verifyForgotEmail()" [disabled]="forgotLoading">
+          <span *ngIf="!forgotLoading">🔍 Verify My Account</span>
+          <span *ngIf="forgotLoading" class="loader"></span>
+        </button>
+      </div>
+
+      <!-- Step 2: New Password Form -->
+      <div *ngIf="forgotStep === 'newPassword'">
+        <div style="background: rgba(124,58,237,0.15); border: 1px solid rgba(168,85,247,0.3); border-radius: 10px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.82rem; color: #e9d5ff;">
+          ✅ Account Found: <strong>{{ forgotUser?.firstName }} {{ forgotUser?.lastName }}</strong> ({{ forgotUser?.email }})
+        </div>
+        <div class="form-group" style="margin-bottom: 1rem;">
+          <label>New Password</label>
+          <input type="password" [(ngModel)]="newPassword" name="forgotNewPass" placeholder="••••••••" />
+        </div>
+        <div class="form-group" style="margin-bottom: 1.25rem;">
+          <label>Confirm New Password</label>
+          <input type="password" [(ngModel)]="confirmPassword" name="forgotConfirmPass" placeholder="••••••••" (keyup.enter)="resetPassword()" />
+        </div>
+        <button class="btn-primary" type="button" (click)="resetPassword()" [disabled]="forgotLoading">
+          <span *ngIf="!forgotLoading">💾 Update Password</span>
+          <span *ngIf="forgotLoading" class="loader"></span>
+        </button>
+      </div>
+
+      <!-- Step 3: Success Confirmation -->
+      <div *ngIf="forgotStep === 'success'" style="text-align: center; padding: 0.5rem 0;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🎉</div>
+        <h4 style="font-size: 1.1rem; font-weight: 800; color: #4ade80; margin-bottom: 0.5rem;">Password Reset Successful!</h4>
+        <p style="font-size: 0.85rem; color: rgba(255,255,255,0.7); margin-bottom: 1.5rem; line-height: 1.5;">
+          Your password has been updated successfully. You can now log in with your new credentials.
+        </p>
+        <button class="btn-primary" type="button" (click)="closeForgotPasswordModal(); setMode(true)">
+          → Back to Login
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </div>

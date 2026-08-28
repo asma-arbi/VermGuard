@@ -15,6 +15,8 @@ export interface EvaluationItem {
   securiteScore: number;
   checklistScore: number;
   globalScore?: number;
+  enabledCriteria?: Record<string, boolean>;
+  customCriteria?: Array<{ id: string; name: string; score: number; enabled: boolean }>;
   comments?: string;
   isPublished?: boolean;
   createdAt?: string;
@@ -82,7 +84,7 @@ export class EvaluationsService {
    * Récupérer les évaluations de l'utilisateur connecté (Lecture seule - SOC ou Manager)
    */
   getMyEvaluations(userId: number, role: string = 'soc'): Observable<EvaluationItem[]> {
-    return this.http.get<EvaluationItem[]>(`${this.apiUrl}/my`, {
+    return this.http.get<EvaluationItem[]>(`${this.apiUrl}/my?userId=${userId}`, {
       headers: this.getHeaders(role, userId),
     });
   }

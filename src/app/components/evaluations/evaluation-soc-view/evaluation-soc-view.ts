@@ -1,6 +1,7 @@
-import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, DoCheck, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EvaluationsService, EvaluationItem } from '../../../services/evaluations.service';
+import { SocketService } from '../../../services/socket.service';
 
 @Component({
   selector: 'app-evaluation-soc-view',
@@ -402,25 +403,42 @@ import { EvaluationsService, EvaluationItem } from '../../../services/evaluation
     }
   `]
 })
-export class EvaluationSocViewComponent implements OnInit {
+export class EvaluationSocViewComponent implements OnInit, DoCheck {
   evaluations: EvaluationItem[] = [];
   loading = false;
+  private wasLoaded = false;
 
   constructor(
     private evalService: EvaluationsService,
+    private socketService: SocketService,
     private cdr: ChangeDetectorRef,
     private ngZone: NgZone
   ) {}
 
   ngOnInit() {
     this.loadMyEvaluations();
+    
+    // Auto-refresh when manager publishes or updates an evaluation in real-time
+    this.socketService.onEvaluationUpdated().subscribe(() => {
+      this.ngZone.run(() => {
+        this.loadMyEvaluations();
+      });
+    });
+  }
+
+  ngDoCheck() {
+    if (!this.wasLoaded) {
+      this.wasLoaded = true;
+      this.loadMyEvaluations();
+    }
   }
 
   private CACHE_KEY = 'vermguard_eval_my_cache';
 
   loadMyEvaluations() {
+    this.loading = true;
     const storedUser = localStorage.getItem('loggedUser');
-    let loggedUserId = 3; // Default Wissem Saadli (role: soc)
+    let loggedUserId = 0;
     if (storedUser) {
       try {
         const u = JSON.parse(storedUser);
@@ -428,6 +446,7 @@ export class EvaluationSocViewComponent implements OnInit {
       } catch {}
     }
 
+    // Attempt instant display from cache if present
     const cached = localStorage.getItem(this.CACHE_KEY + '_' + loggedUserId);
     if (cached) {
       try {
@@ -439,11 +458,16 @@ export class EvaluationSocViewComponent implements OnInit {
       } catch (e) {}
     }
 
+    // Always fetch fresh evaluations from HTTP backend
     this.evalService.getMyEvaluations(loggedUserId, 'soc').subscribe({
       next: (data) => {
         this.ngZone.run(() => {
           this.evaluations = data || [];
-          localStorage.setItem(this.CACHE_KEY + '_' + loggedUserId, JSON.stringify(this.evaluations));
+          if (this.evaluations.length > 0) {
+            localStorage.setItem(this.CACHE_KEY + '_' + loggedUserId, JSON.stringify(this.evaluations));
+          } else {
+            localStorage.removeItem(this.CACHE_KEY + '_' + loggedUserId);
+          }
           this.loading = false;
           this.cdr.detectChanges();
         });

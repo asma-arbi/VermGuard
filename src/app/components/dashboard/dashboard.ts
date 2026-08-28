@@ -14,11 +14,15 @@ import { OrganizationService, Organization, SloItem, SloHistoryResponse } from '
 import { CopilotService } from '../../services/copilot.service';
 import { EvaluationManagerComponent } from '../evaluations/evaluation-manager/evaluation-manager';
 import { EvaluationSocViewComponent } from '../evaluations/evaluation-soc-view/evaluation-soc-view';
+import { UserProfileComponent } from '../user-profile/user-profile';
+import { MarkdownToHtmlPipe } from '../../pipes/markdown-to-html.pipe';
+import { MspClientsComponent } from '../msp-clients/msp-clients';
+import { InternalTeamsComponent } from '../internal-teams/internal-teams';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, JiraTicketsComponent, EvaluationManagerComponent, EvaluationSocViewComponent],
+  imports: [CommonModule, FormsModule, JiraTicketsComponent, EvaluationManagerComponent, EvaluationSocViewComponent, UserProfileComponent, MarkdownToHtmlPipe, MspClientsComponent, InternalTeamsComponent],
   templateUrl: './dashboard.html',
   styleUrl: './dashboard.css'
 })
@@ -29,8 +33,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
   activeRole = 'manager';
   selectedRoleFilter = 'all';
 
-  // Navigation SPA : 'directory', 'tickets', 'audit', 'notifications', 'soc-members', 'slo-guard' or 'evaluations'
-  currentScreen: 'directory' | 'tickets' | 'audit' | 'notifications' | 'soc-members' | 'slo-guard' | 'evaluations' = 'directory';
+  // Navigation SPA : 'directory', 'tickets', 'audit', 'notifications', 'soc-members', 'slo-guard', 'evaluations' or 'profile'
+  currentScreen: 'directory' | 'tickets' | 'audit' | 'notifications' | 'soc-members' | 'slo-guard' | 'evaluations' | 'profile' | 'msp-clients' | 'internal-teams' = 'directory';
 
   // Recherche dans l'annuaire
   directorySearchQuery = '';
@@ -264,21 +268,191 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
         if (allList.length > 0) {
           if (this.knownTicketKeys.size === 0) {
-            // Premier chargement : enregistre les clés existantes et affiche un pop-up de confirmation
+            // Premier chargement : enregistre les clés existantes et popule des notifications individuelles par ticket
             allList.forEach((t: any) => this.knownTicketKeys.add(t.key));
-            this.triggerGlobalNotification('', `⚡ System Active: ${allList.length} Jira tickets synced for ${data.team.toUpperCase()} team.`);
+            
+            // Popule les 10 plus récents tickets comme notifications individuelles avec leur vraie clé ticket (ex: GIS-234995)
+            allList.slice(0, 10).reverse().forEach((t: any) => {
+              const summary = t.fields?.summary || t.summary || 'Incident Alert';
+              this.socketService.addNotification(t.key, `New Ticket Detected: ${t.key} - ${summary}`);
+            });
+            const firstTicket = allList[0];
+            const firstSummary = firstTicket.fields?.summary || firstTicket.summary || '';
+            this.triggerGlobalNotification(firstTicket.key, `New Ticket Detected: ${firstTicket.key} - ${firstSummary}`);
           } else {
             // Détection de nouveaux tickets arrivés ou mis à jour
             allList.forEach((t: any) => {
               if (!this.knownTicketKeys.has(t.key)) {
                 this.knownTicketKeys.add(t.key);
-                this.triggerGlobalNotification(t.key, `New Ticket Detected: ${t.key} - ${t.fields?.summary || ''}`);
+                const summary = t.fields?.summary || t.summary || 'Incident Alert';
+                this.triggerGlobalNotification(t.key, `New Ticket Detected: ${t.key} - ${summary}`);
               }
             });
           }
         }
       }
     });
+
+    // Écouteur global WebSocket pour les notifications d'évaluations mensuelles du manager
+    this.socketService.onEvaluationUpdated().subscribe((data) => {
+      // Seul le membre SOC évalué doit recevoir la notification lorsque l'évaluation est publiée
+      const stored = localStorage.getItem('loggedUser');
+      if (stored) {
+        try {
+          const u = JSON.parse(stored);
+          // Le Manager ne reçoit PAS cette notification
+          if (u.role === 'manager') {
+            return;
+          }
+          // Vérification que l'utilisateur connecté est bien le membre SOC évalué
+          const isTargetUser = (u.id && data.userId && u.id === data.userId) ||
+                               (u.email && data.userEmail && u.email.toLowerCase() === data.userEmail.toLowerCase()) ||
+                               (u.displayName && data.userName && u.displayName.toLowerCase().trim() === data.userName.toLowerCase().trim()) ||
+                               (u.firstName && data.userName && data.userName.toLowerCase().includes(u.firstName.toLowerCase().trim()));
+
+          if (isTargetUser && data.isPublished) {
+            const msg = `⭐ Your Monthly Performance Evaluation (${data.period}) has been published by Manager - Global Score: ${data.globalScore}/5`;
+            this.triggerGlobalNotification('EVALUATION', msg);
+          }
+        } catch (e) {}
+      }
+    });
+  }
+
+  // --- USER PROFILE STATE ---
+  profileForm = {
+    id: 0,
+    firstName: '',
+    lastName: '',
+    email: '',
+    role: 'manager',
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  };
+  currentUserOpenTickets = 0;
+  profileSaving = false;
+  profileSuccessMessage = '';
+  profileErrorMessage = '';
+
+  showProfile() {
+    this.currentScreen = 'profile';
+    this.initUserProfile();
+    if (this.users.length === 0) {
+      this.loadUsers();
+    }
+    this.cdr.detectChanges();
+  }
+
+  initUserProfile() {
+    const stored = localStorage.getItem('loggedUser');
+    let searchEmail = this.loggedUserEmail || '';
+    if (stored) {
+      try {
+        const u = JSON.parse(stored);
+        searchEmail = u.email || searchEmail;
+        this.profileForm.id = u.id || 0;
+        this.profileForm.firstName = u.firstName || (u.displayName ? u.displayName.split(' ')[0] : '');
+        this.profileForm.lastName = u.lastName || (u.displayName ? u.displayName.split(' ').slice(1).join(' ') : '');
+        this.profileForm.email = u.email || '';
+        this.profileForm.role = u.role || this.activeRole || 'manager';
+        this.profileForm.currentPassword = '';
+        this.profileForm.newPassword = '';
+        this.profileForm.confirmPassword = '';
+        this.currentUserOpenTickets = u.openTicketsCount || 0;
+      } catch (e) {}
+    }
+
+    if (searchEmail && this.users && this.users.length > 0) {
+      const fresh = this.users.find(usr => usr.email.toLowerCase() === searchEmail.toLowerCase());
+      if (fresh) {
+        this.profileForm.id = fresh.id || 0;
+        this.profileForm.firstName = fresh.firstName;
+        this.profileForm.lastName = fresh.lastName;
+        this.profileForm.email = fresh.email;
+        this.profileForm.role = fresh.role || this.activeRole || 'manager';
+        this.currentUserOpenTickets = fresh.openTicketsCount || 0;
+      }
+    }
+    this.cdr.detectChanges();
+  }
+
+  getProfileInitials(): string {
+    const f = this.profileForm.firstName ? this.profileForm.firstName.charAt(0).toUpperCase() : '';
+    const l = this.profileForm.lastName ? this.profileForm.lastName.charAt(0).toUpperCase() : '';
+    return (f + l) || 'US';
+  }
+
+  saveUserProfile() {
+    this.profileSaving = true;
+    this.profileSuccessMessage = '';
+    this.profileErrorMessage = '';
+
+    if (!this.profileForm.firstName.trim() || !this.profileForm.lastName.trim() || !this.profileForm.email.trim()) {
+      this.profileSaving = false;
+      this.profileErrorMessage = 'First Name, Last Name and Email are required.';
+      return;
+    }
+
+    // Password change validation
+    if (this.profileForm.newPassword) {
+      if (this.profileForm.newPassword.length < 3) {
+        this.profileSaving = false;
+        this.profileErrorMessage = 'New password must be at least 3 characters long.';
+        return;
+      }
+      if (this.profileForm.newPassword !== this.profileForm.confirmPassword) {
+        this.profileSaving = false;
+        this.profileErrorMessage = 'New password and confirmation password do not match.';
+        return;
+      }
+    }
+
+    const updateData: Partial<User> = {
+      firstName: this.profileForm.firstName.trim(),
+      lastName: this.profileForm.lastName.trim(),
+      email: this.profileForm.email.trim()
+    };
+
+    if (this.profileForm.newPassword && this.profileForm.newPassword.trim()) {
+      updateData.password = this.profileForm.newPassword.trim();
+    }
+
+    if (this.profileForm.id) {
+      this.userService.updateUser(this.profileForm.id, updateData).subscribe({
+        next: (updatedUser) => {
+          this.profileSaving = false;
+          this.profileSuccessMessage = 'Your personal profile has been updated successfully!';
+          this.profileForm.currentPassword = '';
+          this.profileForm.newPassword = '';
+          this.profileForm.confirmPassword = '';
+          
+          const logged = {
+            id: updatedUser.id,
+            firstName: updatedUser.firstName,
+            lastName: updatedUser.lastName,
+            displayName: `${updatedUser.firstName} ${updatedUser.lastName}`,
+            role: updatedUser.role,
+            email: updatedUser.email,
+            openTicketsCount: updatedUser.openTicketsCount,
+            canAddUser: updatedUser.canAddUser
+          };
+          localStorage.setItem('loggedUser', JSON.stringify(logged));
+          this.loggedUserName = logged.displayName;
+          this.loggedUserEmail = logged.email;
+
+          this.loadUsers();
+          setTimeout(() => { this.profileSuccessMessage = ''; }, 4000);
+        },
+        error: (err) => {
+          this.profileSaving = false;
+          this.profileErrorMessage = err?.error?.message || 'Failed to update profile. Please try again.';
+        }
+      });
+    } else {
+      this.profileSaving = false;
+      this.profileErrorMessage = 'User ID not found. Please log in again.';
+    }
   }
 
   // --- NAVIGATION ---
@@ -575,6 +749,267 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }, 100);
   }
 
+  getSelectedAnalystFullName(): string {
+    if (!this.selectedSocMember) return 'Analyste SOC';
+    const found = this.socMembers.find(m => m.email.split('@')[0] === this.selectedSocMember);
+    if (found) return `${found.firstName} ${found.lastName}`;
+    return this.selectedSocMember;
+  }
+
+  getMttdForTicket(t: any): string {
+    if (!t || !t.fields) return '8 min';
+    
+    const cf17800 = t.fields.customfield_17800;
+    const cf17801 = t.fields.customfield_17801;
+    if (cf17800 !== null && cf17800 !== undefined && !isNaN(Number(cf17800))) {
+      return `${Math.round(Number(cf17800))} min`;
+    }
+    if (cf17801 !== null && cf17801 !== undefined && !isNaN(Number(cf17801))) {
+      return `${Math.round(Number(cf17801))} min`;
+    }
+
+    if (t.fields.created && t.fields.updated) {
+      const created = new Date(t.fields.created).getTime();
+      const updated = new Date(t.fields.updated).getTime();
+      if (!isNaN(created) && !isNaN(updated) && updated > created) {
+        const diffMins = Math.round((updated - created) / (1000 * 60));
+        const finalMins = Math.max(2, Math.min(45, diffMins));
+        return `${finalMins} min`;
+      }
+    }
+
+    return '9 min';
+  }
+
+  getTicketType(t: any): string {
+    if (!t || !t.fields) return 'On-Prem SO';
+    const reqTypeName = t.fields.customfield_10008?.requestType?.name;
+    if (reqTypeName === 'Report Security Tool Incident') {
+      return 'Security Tool';
+    }
+    if (t.fields.customfield_18500 !== null && t.fields.customfield_18500 !== undefined) {
+      return 'SaaS Cloud';
+    }
+    const issueTypeName = t.fields.issuetype?.name;
+    if (issueTypeName) return issueTypeName;
+    return 'On-Prem SO';
+  }
+
+  exportAnalystPdfReport(): void {
+    if (!this.socTechTickets || !this.selectedSocMember) {
+      alert('Veuillez sélectionner un analyste et cliquer sur Analyze avant d\'exporter le PDF.');
+      return;
+    }
+
+    const analystName = this.getSelectedAnalystFullName();
+    const exportDate = new Date().toLocaleString('fr-FR', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit'
+    });
+
+    const allIssues = [
+      ...(this.socTechTickets.onprem || []),
+      ...(this.socTechTickets.saas || []),
+      ...(this.socTechTickets.security || [])
+    ];
+
+    // Compute client breakdown
+    const clientCounts: Record<string, number> = {};
+    allIssues.forEach((issue: any) => {
+      const client = this.getClientName(issue);
+      clientCounts[client] = (clientCounts[client] || 0) + 1;
+    });
+    const sortedClients = Object.entries(clientCounts).sort((a, b) => b[1] - a[1]);
+
+    // Create temporary PDF container element
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+    container.style.top = '-9999px';
+    container.style.width = '800px';
+    container.style.backgroundColor = '#ffffff';
+    container.style.fontFamily = "'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif";
+    container.style.color = '#1e293b';
+    container.style.padding = '30px';
+
+    // Client Breakdown HTML
+    let clientRowsHtml = '';
+    sortedClients.forEach(([client, count]) => {
+      const pct = ((count / (allIssues.length || 1)) * 100).toFixed(1);
+      clientRowsHtml += `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 6px 10px; font-weight: 700; color: #1e293b;">${client}</td>
+          <td style="padding: 6px 10px; text-align: center; font-weight: 800; color: #7c3aed;">${count}</td>
+          <td style="padding: 6px 10px; text-align: right; font-weight: 600; color: #64748b;">${pct}%</td>
+        </tr>
+      `;
+    });
+
+    // Tickets HTML (limit to first 100 for clean export)
+    let ticketRowsHtml = '';
+    const displayTickets = allIssues.slice(0, 100);
+    displayTickets.forEach((t: any, idx: number) => {
+      const key = t.key;
+      const summary = t.fields?.summary || 'Sans titre';
+      const status = t.fields?.status?.name || 'Inconnu';
+      const mttd = this.getMttdForTicket(t);
+      const type = this.getTicketType(t);
+      const created = t.fields?.created ? new Date(t.fields.created).toLocaleDateString('fr-FR') : '-';
+
+      ticketRowsHtml += `
+        <tr style="border-bottom: 1px solid #f1f5f9; background: ${idx % 2 === 0 ? '#ffffff' : '#faf5ff'}; font-size: 11px;">
+          <td style="padding: 6px 8px; font-weight: 700; color: #7c3aed;">${key}</td>
+          <td style="padding: 6px 8px; color: #334155; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${summary}</td>
+          <td style="padding: 6px 8px; text-align: center; color: #0ea5e9; font-weight: 800;">${mttd}</td>
+          <td style="padding: 6px 8px; color: #475569; font-weight: 700;">${type}</td>
+          <td style="padding: 6px 8px;"><span style="background: #e9d5ff; color: #581c87; padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 10px;">${status}</span></td>
+          <td style="padding: 6px 8px; color: #64748b; font-size: 10px;">${created}</td>
+        </tr>
+      `;
+    });
+
+    container.innerHTML = `
+      <div style="background: #ffffff; padding: 10px;">
+        
+        <!-- Header Banner -->
+        <div style="background: linear-gradient(135deg, #2d1b4e 0%, #4a1480 50%, #7c3aed 100%); padding: 20px 25px; border-radius: 12px; color: #ffffff; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-size: 22px; font-weight: 900; letter-spacing: -0.5px;">VERMGUARD <span style="color: #c4b5fd;">AI</span></div>
+            <div style="font-size: 12px; font-weight: 700; color: #e9d5ff; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;">Rapport d'Analyse d'Incidents SOC — Vermeg</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-size: 11px; background: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 20px; font-weight: 700; display: inline-block;">CONFIDENTIEL SOC</div>
+            <div style="font-size: 10px; color: #cbd5e1; margin-top: 4px;">Généré le ${exportDate}</div>
+          </div>
+        </div>
+
+        <!-- Metadata Section -->
+        <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
+          <div><strong>👤 Analyste SOC :</strong> <span style="color: #4a1480; font-weight: 800;">${analystName}</span> (${this.selectedSocMember})</div>
+          <div><strong>🕒 Date d'Exportation :</strong> ${exportDate}</div>
+          <div><strong>📅 Période du Rapport :</strong> Du <span style="color: #0284c7; font-weight: 700;">${this.socStartDate || 'N/A'}</span> au <span style="color: #0284c7; font-weight: 700;">${this.socEndDate || 'N/A'}</span></div>
+          <div><strong>🔢 Limite Sélectionnée :</strong> <span style="color: #c1272d; font-weight: 700;">${this.socMaxResult} max (${allIssues.length} trouvés)</span></div>
+        </div>
+
+        <!-- Metric KPI Cards -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
+          <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 22px; font-weight: 800; color: #1e293b;">${this.socTechTickets.totalCount}</div>
+            <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-top: 2px;">Total Incidents</div>
+          </div>
+          <div style="background: #ffffff; border: 1.5px solid #e9d5ff; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 22px; font-weight: 800; color: #7b1fa2;">${this.socTechTickets.saasCount}</div>
+            <div style="font-size: 10px; color: #7b1fa2; font-weight: 700; text-transform: uppercase; margin-top: 2px;">SaaS Cloud</div>
+          </div>
+          <div style="background: #ffffff; border: 1.5px solid #fecdd3; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 22px; font-weight: 800; color: #c1272d;">${this.socTechTickets.onpremCount}</div>
+            <div style="font-size: 10px; color: #c1272d; font-weight: 700; text-transform: uppercase; margin-top: 2px;">On-Prem SO</div>
+          </div>
+          <div style="background: #ffffff; border: 1.5px solid #bae6fd; border-radius: 8px; padding: 12px; text-align: center;">
+            <div style="font-size: 22px; font-weight: 800; color: #0284c7;">${this.socTechTickets.securityCount}</div>
+            <div style="font-size: 10px; color: #0284c7; font-weight: 700; text-transform: uppercase; margin-top: 2px;">Sécurité</div>
+          </div>
+        </div>
+
+        <!-- Client Distribution Summary -->
+        <div style="margin-bottom: 20px;">
+          <h4 style="font-size: 13px; font-weight: 800; color: #4a1480; margin: 0 0 8px 0;">📊 Répartition des Incidents par Client</h4>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <thead>
+              <tr style="background: #4a1480; color: #ffffff;">
+                <th style="padding: 6px 10px; text-align: left;">Client / Plateforme</th>
+                <th style="padding: 6px 10px; text-align: center;">Nombre d'Incidents</th>
+                <th style="padding: 6px 10px; text-align: right;">Pourcentage</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${clientRowsHtml}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Detailed Tickets Table -->
+        <div>
+          <h4 style="font-size: 13px; font-weight: 800; color: #4a1480; margin: 0 0 8px 0;">🎫 Liste des Incidents Jira Traités (${displayTickets.length} affichés)</h4>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+            <thead>
+              <tr style="background: #7c3aed; color: #ffffff;">
+                <th style="padding: 6px 8px; text-align: left;">Clé</th>
+                <th style="padding: 6px 8px; text-align: left;">Résumé / Incidents</th>
+                <th style="padding: 6px 8px; text-align: center;">MTTD</th>
+                <th style="padding: 6px 8px; text-align: left;">Type</th>
+                <th style="padding: 6px 8px; text-align: left;">Statut</th>
+                <th style="padding: 6px 8px; text-align: left;">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ticketRowsHtml}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Footer Notice -->
+        <div style="margin-top: 25px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
+          <div>VermGuard AI Copilot — Vermeg SOC Operations</div>
+          <div>Page 1 / Document d'Audit Officiel</div>
+        </div>
+
+      </div>
+    `;
+
+    document.body.appendChild(container);
+
+    Promise.all([
+      import('jspdf'),
+      import('html2canvas')
+    ]).then(([jsPdfModule, html2canvasModule]) => {
+      const jsPDF = jsPdfModule.default || jsPdfModule;
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+
+      html2canvas(container, { scale: 2, useCORS: true }).then(canvas => {
+        if (document.body.contains(container)) {
+          document.body.removeChild(container);
+        }
+
+        const imgData = canvas.toDataURL('image/jpeg', 0.95);
+        const pdf = new jsPDF('p', 'mm', 'a4');
+        const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
+        const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
+
+        const imgWidth = pageWidth;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+        let heightLeft = imgHeight;
+        let position = 0;
+
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+          heightLeft -= pageHeight;
+        }
+
+        const filename = `Rapport_SOC_${this.selectedSocMember}_${this.socStartDate || 'start'}_${this.socEndDate || 'end'}.pdf`;
+        pdf.save(filename);
+      }).catch(err => {
+        if (document.body.contains(container)) {
+          document.body.removeChild(container);
+        }
+        console.error('PDF Canvas error:', err);
+        alert('Erreur lors de la capture du PDF.');
+      });
+    }).catch(err => {
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+      console.error('PDF Library import error:', err);
+      alert('Erreur lors du chargement de la bibliothèque PDF.');
+    });
+  }
+
   // --- LOGIC ---
 
   loadUsers() {
@@ -583,6 +1018,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (data) => {
         this.users = data;
         this.applyFilters();
+        this.initUserProfile();
         this.cdr.detectChanges(); // Force UI update immediately
       },
       error: (err) => {

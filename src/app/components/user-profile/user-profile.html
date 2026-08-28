@@ -1,0 +1,92 @@
+<div class="fade-in" style="padding-top: 0.5rem;">
+  
+  <div class="header-section" style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 0.25rem;">👤 User Profile Management</h2>
+    <p class="subtitle" style="color: #64748b; font-size: 0.9rem;">View and update your personal credentials and security settings</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 320px 1fr; gap: 2rem; align-items: flex-start;">
+    
+    <!-- User Card / Avatar Summary -->
+    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 2rem; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+      
+      <div style="width: 95px; height: 95px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #4a1480); color: white; font-size: 2.3rem; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; box-shadow: 0 8px 24px rgba(124, 58, 237, 0.3);">
+        {{ getInitials() }}
+      </div>
+
+      <h3 style="font-size: 1.3rem; font-weight: 800; color: #0f172a; margin-bottom: 0.25rem;">
+        {{ profileForm.firstName || 'User' }} {{ profileForm.lastName }}
+      </h3>
+
+      <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 1.25rem; word-break: break-all;">
+        {{ profileForm.email || 'aymen@vermeg.com' }}
+      </div>
+
+      <div style="display: inline-block; padding: 0.35rem 1rem; border-radius: 20px; font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;" [ngClass]="'role-' + (profileForm.role || 'manager')">
+        👑 {{ (profileForm.role || 'manager') | uppercase }}
+      </div>
+
+      <div style="margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid #f1f5f9; display: flex; justify-content: center;">
+        <div>
+          <div style="font-size: 1.4rem; font-weight: 800; color: #10b981;">Active</div>
+          <div style="font-size: 0.72rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Account Status</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Edit Profile Details Form Card -->
+    <div style="background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 2rem; box-shadow: 0 4px 12px rgba(0,0,0,0.03);">
+      
+      <h3 style="font-size: 1.15rem; font-weight: 800; color: #0f172a; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+        <span>⚙️</span> Edit Personal Details
+      </h3>
+
+      <!-- Success / Error alerts -->
+      <div class="alert alert-success" *ngIf="successMessage" style="margin-bottom: 1.25rem; background: #dcfce7; color: #166534; padding: 0.85rem 1rem; border-radius: 12px; font-weight: 600; font-size: 0.88rem;">
+        ✅ {{ successMessage }}
+      </div>
+      <div class="alert alert-danger" *ngIf="errorMessage" style="margin-bottom: 1.25rem; background: #fee2e2; color: #991b1b; padding: 0.85rem 1rem; border-radius: 12px; font-weight: 600; font-size: 0.88rem;">
+        ⚠️ {{ errorMessage }}
+      </div>
+
+      <form (ngSubmit)="saveProfile()" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+        
+        <div class="form-group">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">First Name *</label>
+          <input type="text" [(ngModel)]="profileForm.firstName" name="profileFirstName" required class="analyser-input" style="width: 100%; height: 42px; padding: 0 1rem; border: 1px solid #cbd5e1; border-radius: 10px; font-weight: 600; font-size: 0.9rem;" placeholder="First Name">
+        </div>
+
+        <div class="form-group">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Last Name *</label>
+          <input type="text" [(ngModel)]="profileForm.lastName" name="profileLastName" required class="analyser-input" style="width: 100%; height: 42px; padding: 0 1rem; border: 1px solid #cbd5e1; border-radius: 10px; font-weight: 600; font-size: 0.9rem;" placeholder="Last Name">
+        </div>
+
+        <div class="form-group" style="grid-column: span 2;">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Professional Email Address *</label>
+          <input type="email" [(ngModel)]="profileForm.email" name="profileEmail" required class="analyser-input" style="width: 100%; height: 42px; padding: 0 1rem; border: 1px solid #cbd5e1; border-radius: 10px; font-weight: 600; font-size: 0.9rem;" placeholder="name@vermeg.com">
+        </div>
+
+        <div class="form-group">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">New Password (Optional)</label>
+          <input type="password" [(ngModel)]="profileForm.newPassword" name="profileNewPassword" placeholder="••••••••" class="analyser-input" style="width: 100%; height: 42px; padding: 0 1rem; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 0.9rem;">
+        </div>
+
+        <div class="form-group">
+          <label style="font-size: 0.78rem; font-weight: 700; color: #475569; text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Confirm New Password</label>
+          <input type="password" [(ngModel)]="profileForm.confirmPassword" name="profileConfirmPassword" placeholder="••••••••" class="analyser-input" style="width: 100%; height: 42px; padding: 0 1rem; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 0.9rem;">
+        </div>
+
+        <div style="grid-column: span 2; display: flex; justify-content: flex-end; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
+          <button type="submit" class="btn-primary" [disabled]="isSaving" style="background: linear-gradient(135deg, #7c3aed, #4a1480); color: white; border: none; padding: 0 2rem; height: 44px; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.35);">
+            <span *ngIf="!isSaving">💾 Save Changes</span>
+            <span *ngIf="isSaving" class="spinner"></span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+
+  </div>
+
+</div>

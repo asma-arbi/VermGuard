@@ -67,6 +67,32 @@
          style="cursor: pointer;">
         <i class="icon">📈</i> Evaluations
       </a>
+
+      <!-- MSP Clients: manager only -->
+      <a class="nav-item" 
+         *ngIf="activeRole === 'manager'"
+         [class.active]="currentScreen === 'msp-clients'" 
+         (click)="currentScreen = 'msp-clients'"
+         style="cursor: pointer;">
+        <i class="icon">🏢</i> MSP Clients
+      </a>
+
+      <!-- Internal Teams: manager only -->
+      <a class="nav-item" 
+         *ngIf="activeRole === 'manager'"
+         [class.active]="currentScreen === 'internal-teams'" 
+         (click)="currentScreen = 'internal-teams'"
+         style="cursor: pointer;">
+        <i class="icon">🏛️</i> Internal Teams
+      </a>
+
+      <!-- User Profile -->
+      <a class="nav-item" 
+         [class.active]="currentScreen === 'profile'" 
+         (click)="showProfile()"
+         style="cursor: pointer;">
+        <i class="icon">👤</i> My Profile
+      </a>
     </nav>
   </aside>
 
@@ -75,11 +101,14 @@
     
     <!-- Topbar -->
     <header class="topbar">
-      <div class="welcome-text">
-        Hello, <strong>{{ loggedUserName }}</strong>
+      <div class="welcome-text" (click)="showProfile()" style="cursor: pointer;" title="Access My Profile">
+        Hello, <strong>{{ loggedUserName }}</strong> 👤
       </div>
       
       <div class="topbar-actions">
+        <button class="btn-secondary" (click)="showProfile()" style="font-size: 0.8rem; font-weight: 700; padding: 0.4rem 0.8rem; border-radius: 8px;">
+          👤 My Profile
+        </button>
         <span class="role-badge-topbar" [ngClass]="'badge-' + activeRole">{{ activeRole | uppercase }}</span>
         <button class="btn-logout" (click)="logout()">← Logout</button>
       </div>
@@ -110,10 +139,6 @@
               <span class="stat-value">{{ getTotalUsers() }}</span>
               <span class="stat-label">Total Staff</span>
             </div>
-            <div class="stat-card">
-              <span class="stat-value">{{ getTotalOpenTickets() }}</span>
-              <span class="stat-label">Active Tickets</span>
-            </div>
           </div>
 
           <div class="actions">
@@ -124,10 +149,6 @@
                      (ngModelChange)="applyFilters()" 
                      class="directory-search-input">
             </div>
-
-            <button class="btn-secondary" (click)="exportDirectoryToCsv()" style="margin-right: 0.5rem;">
-              📥 Export CSV
-            </button>
 
             <div class="filter-group" style="margin-right: 0.5rem;">
               <button class="btn-filter" [class.active]="selectedRoleFilter === 'all'" (click)="setRoleFilter('all')">All</button>
@@ -148,14 +169,13 @@
                 <th>Last Name</th>
                 <th>Email</th>
                 <th>Role</th>
-                <th>Open Tickets</th>
                 <th>Can Add User</th>
-                <th class="text-right" *ngIf="activeRole === 'manager'">Actions</th>
+                <th class="text-right" *ngIf="canUserAdd()">Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr *ngIf="filteredUsers.length === 0">
-                <td [colSpan]="activeRole === 'manager' ? 7 : 6" class="text-center empty-state">No staff members found.</td>
+                <td [colSpan]="canUserAdd() ? 6 : 5" class="text-center empty-state">No staff members found.</td>
               </tr>
               <tr *ngFor="let user of filteredUsers">
                 <td class="font-medium">{{ user.firstName }}</td>
@@ -165,18 +185,13 @@
                   <span class="role-badge" [ngClass]="'role-' + user.role">{{ user.role | uppercase }}</span>
                 </td>
                 <td>
-                  <span class="ticket-count" [class.high]="user.openTicketsCount && user.openTicketsCount > 5">
-                    {{ user.openTicketsCount || 0 }}
-                  </span>
-                </td>
-                <td>
                   <input type="checkbox" 
                          [checked]="user.canAddUser" 
                          [disabled]="activeRole !== 'manager' || user.role === 'manager'" 
                          (change)="toggleAddUserPermission(user)"
                          style="width: 18px; height: 18px; cursor: pointer;">
                 </td>
-                <td class="text-right" *ngIf="activeRole === 'manager'">
+                <td class="text-right" *ngIf="canUserAdd()">
                   <button class="btn-icon btn-edit" (click)="openEditModal(user)" title="Edit">✏️</button>
                   <button class="btn-icon btn-delete" (click)="deleteUser(user)" title="Delete">🗑️</button>
                 </td>
@@ -219,13 +234,21 @@
               <tr *ngFor="let note of notificationHistory">
                 <td style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">{{ note.timestamp | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td>
-                  <a [href]="'https://jira.vermeg.com/browse/' + note.key" target="_blank" style="text-decoration: none;">
+                  <span *ngIf="note.key === 'EVALUATION'" (click)="showEvaluations()" class="role-badge" style="background: rgba(123, 31, 162, 0.1); color: #7B1FA2; border: 1px solid rgba(123, 31, 162, 0.3); font-weight: 700; font-family: monospace; cursor: pointer; display: inline-block; transition: all 0.2s;">
+                    ⭐ EVALUATION
+                  </span>
+                  <a *ngIf="note.key !== 'EVALUATION'" [href]="'https://jira.vermeg.com/browse/' + note.key" target="_blank" style="text-decoration: none;">
                     <span class="role-badge" style="background: rgba(123, 31, 162, 0.1); color: #7B1FA2; border: 1px solid rgba(123, 31, 162, 0.3); font-weight: 700; font-family: monospace; cursor: pointer; display: inline-block; transition: all 0.2s;">
                       🔗 {{ note.key }}
                     </span>
                   </a>
                 </td>
-                <td class="font-medium" style="color: var(--text-dark); font-size: 0.9rem;">{{ note.message }}</td>
+                <td class="font-medium" [style.cursor]="note.key === 'EVALUATION' ? 'pointer' : 'default'" (click)="note.key === 'EVALUATION' && showEvaluations()" style="color: var(--text-dark); font-size: 0.9rem;">
+                  {{ note.message }}
+                  <span *ngIf="note.key === 'EVALUATION'" style="margin-left: 0.5rem; font-size: 0.8rem; color: var(--brand-primary); font-weight: 700; text-decoration: underline;">
+                    ➡️ Click to View Evaluation
+                  </span>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -236,6 +259,16 @@
       <div *ngIf="currentScreen === 'evaluations'" class="fade-in">
         <app-evaluation-manager *ngIf="activeRole === 'manager'"></app-evaluation-manager>
         <app-evaluation-soc-view *ngIf="activeRole === 'soc' || activeRole === 'support'"></app-evaluation-soc-view>
+      </div>
+
+      <!-- ── SECTION 7 : MSP CLIENTS (Manager only) ── -->
+      <div *ngIf="currentScreen === 'msp-clients' && activeRole === 'manager'" class="fade-in">
+        <app-msp-clients></app-msp-clients>
+      </div>
+
+      <!-- ── SECTION 8 : INTERNAL TEAMS (Manager only) ── -->
+      <div *ngIf="currentScreen === 'internal-teams' && activeRole === 'manager'" class="fade-in">
+        <app-internal-teams></app-internal-teams>
       </div>
 
       <!-- ── SECTION 5 : SOC MEMBERS ── -->
@@ -251,7 +284,7 @@
             
             <div class="form-group" style="margin-bottom: 0;">
               <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Select SOC Analyst *</label>
-              <select [(ngModel)]="selectedSocMember" class="analyser-input analyser-select">
+              <select [(ngModel)]="selectedSocMember" class="analyser-input analyser-select" style="width: 100%;">
                 <option value="">-- Choose SOC Analyst --</option>
                 <option *ngFor="let member of socMembers" [value]="member.email.split('@')[0]">
                   {{ member.firstName }} {{ member.lastName }} ({{ member.email.split('@')[0] }})
@@ -261,21 +294,28 @@
 
             <div class="form-group" style="margin-bottom: 0;">
               <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">From (Start Date) *</label>
-              <input type="date" [(ngModel)]="socStartDate" class="analyser-input">
+              <input type="date" [(ngModel)]="socStartDate" class="analyser-input" style="width: 100%;">
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
               <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">To (End Date) *</label>
-              <input type="date" [(ngModel)]="socEndDate" class="analyser-input">
+              <input type="date" [(ngModel)]="socEndDate" class="analyser-input" style="width: 100%;">
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
               <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Max Results Limit</label>
-              <input type="number" [(ngModel)]="socMaxResult" min="1" max="5000" class="analyser-input">
+              <input type="number" [(ngModel)]="socMaxResult" min="1" max="5000" class="analyser-input" style="width: 100%;">
             </div>
 
+          </div>
+
+          <!-- Action Buttons Row -->
+          <div style="display: flex; justify-content: flex-end; align-items: center; gap: 1rem; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
             <button class="btn-primary analyser-btn" (click)="searchSocTechIncidents()" style="height: 42px; border-radius: 8px; padding: 0 1.5rem; font-size: 0.9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
               <span>🔍</span> Analyze
+            </button>
+            <button class="btn-primary export-pdf-btn" (click)="exportAnalystPdfReport()" [disabled]="!socTechTickets || socTechLoading" style="height: 42px; border-radius: 8px; padding: 0 1.5rem; font-size: 0.9rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: linear-gradient(135deg, #7c3aed, #4a1480); border: none; color: white; box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3); transition: all 0.2s ease;">
+              <span>📄</span> Exporter Rapport PDF
             </button>
           </div>
         </div>
@@ -815,10 +855,10 @@
                       <td style="text-align:center;">
                         <button class="btn-slo-correct"
                           [class.btn-slo-restore]="ev.isExcluded"
-                          [class.btn-disabled]="ev.isMuted !== true && !ev.isExcluded"
-                          [disabled]="ev.isMuted !== true && !ev.isExcluded"
-                          (click)="(ev.isMuted === true || ev.isExcluded) && toggleDowntimeExclusion(ev)"
-                          [title]="ev.isMuted !== true && !ev.isExcluded ? 'Correction disabled: URL is NOT muted in Datadog' : (ev.isExcluded ? 'Restore this event to SLO calculation' : 'Exclude this downtime from SLO calculation')">
+                          [class.btn-disabled]="!ev.isMuted && !ev.isExcluded"
+                          [disabled]="!ev.isMuted && !ev.isExcluded"
+                          (click)="(ev.isMuted || ev.isExcluded) && toggleDowntimeExclusion(ev)"
+                          [title]="!ev.isMuted && !ev.isExcluded ? 'Correction désactivée : La panne n’est pas couverte par un Mute Datadog' : (ev.isExcluded ? 'Restaurer cet événement dans le calcul SLO' : 'Corriger et exclure ce downtime du calcul SLO')">
                           {{ ev.isExcluded ? '↩ Restore' : '🔧 Correct' }}
                         </button>
                       </td>
@@ -834,6 +874,103 @@
       <!-- /SLO Guard section -->
       </div>
 
+      <!-- ── SECTION 6 : USER PROFILE ── -->
+      <div *ngIf="currentScreen === 'profile'" class="fade-in">
+        
+        <div class="header-section" style="margin-bottom: 2rem;">
+          <h2>👤 User Profile Management</h2>
+          <p class="subtitle">View and update your personal credentials and security settings</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 320px 1fr; gap: 2rem; align-items: flex-start;">
+          
+          <!-- User Card / Avatar Summary -->
+          <div style="background: white; border: 1px solid var(--border-color); border-radius: 20px; padding: 2rem; text-align: center; box-shadow: var(--shadow-sm);">
+            
+            <div style="width: 95px; height: 95px; border-radius: 50%; background: linear-gradient(135deg, #7c3aed, #4a1480); color: white; font-size: 2.3rem; font-weight: 800; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; box-shadow: 0 8px 24px rgba(124, 58, 237, 0.3);">
+              {{ getProfileInitials() }}
+            </div>
+
+            <h3 style="font-size: 1.3rem; font-weight: 800; color: var(--text-dark); margin-bottom: 0.25rem;">
+              {{ profileForm.firstName || 'Aymen' }} {{ profileForm.lastName || 'Bchir' }}
+            </h3>
+
+            <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem; word-break: break-all;">
+              {{ profileForm.email || loggedUserEmail || 'aymen@vermeg.com' }}
+            </div>
+
+            <div style="display: inline-block; padding: 0.35rem 1rem; border-radius: 20px; font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px;" [ngClass]="'role-' + (profileForm.role || activeRole || 'manager')">
+              👑 {{ (profileForm.role || activeRole || 'manager') | uppercase }}
+            </div>
+
+            <div style="margin-top: 1.75rem; padding-top: 1.25rem; border-top: 1px solid var(--border-color); display: flex; justify-content: space-around;">
+              <div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #7c3aed;">{{ currentUserOpenTickets || 0 }}</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Active Tickets</div>
+              </div>
+              <div>
+                <div style="font-size: 1.4rem; font-weight: 800; color: #10b981;">Active</div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase;">Account Status</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Edit Profile Details Form Card -->
+          <div style="background: white; border: 1px solid var(--border-color); border-radius: 20px; padding: 2rem; box-shadow: var(--shadow-sm);">
+            
+            <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>⚙️</span> Edit Personal Details
+            </h3>
+
+            <!-- Success / Error alerts -->
+            <div class="alert alert-success" *ngIf="profileSuccessMessage" style="margin-bottom: 1.25rem;">
+              ✅ {{ profileSuccessMessage }}
+            </div>
+            <div class="alert alert-danger" *ngIf="profileErrorMessage" style="margin-bottom: 1.25rem;">
+              ⚠️ {{ profileErrorMessage }}
+            </div>
+
+            <form (ngSubmit)="saveUserProfile()" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+              
+              <div class="form-group">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">First Name *</label>
+                <input type="text" [(ngModel)]="profileForm.firstName" name="profileFirstName" required class="analyser-input" style="width: 100%; height: 42px; font-weight: 600;" placeholder="First Name">
+              </div>
+
+              <div class="form-group">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Last Name *</label>
+                <input type="text" [(ngModel)]="profileForm.lastName" name="profileLastName" required class="analyser-input" style="width: 100%; height: 42px; font-weight: 600;" placeholder="Last Name">
+              </div>
+
+              <div class="form-group" style="grid-column: span 2;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Professional Email Address *</label>
+                <input type="email" [(ngModel)]="profileForm.email" name="profileEmail" required class="analyser-input" style="width: 100%; height: 42px; font-weight: 600;" placeholder="name@vermeg.com">
+              </div>
+
+              <div class="form-group">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">New Password (Optional)</label>
+                <input type="password" [(ngModel)]="profileForm.newPassword" name="profileNewPassword" placeholder="••••••••" class="analyser-input" style="width: 100%; height: 42px;">
+              </div>
+
+              <div class="form-group">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; display: block;">Confirm New Password</label>
+                <input type="password" [(ngModel)]="profileForm.confirmPassword" name="profileConfirmPassword" placeholder="••••••••" class="analyser-input" style="width: 100%; height: 42px;">
+              </div>
+
+              <div style="grid-column: span 2; display: flex; justify-content: flex-end; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);">
+                <button type="submit" class="btn-primary" [disabled]="profileSaving" style="padding: 0 2rem; height: 44px; border-radius: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 0.5rem;">
+                  <span *ngIf="!profileSaving">💾 Save Changes</span>
+                  <span *ngIf="profileSaving" class="spinner"></span>
+                </button>
+              </div>
+
+            </form>
+          </div>
+
+        </div>
+
+      </div>
 
     <!-- /content-body -->
     </div>
@@ -1248,8 +1385,9 @@
           </div>
         </div>
       </div>
-
+    <!-- /slo-viewer-panel -->
     </div>
+  <!-- /slo-viewer-overlay -->
   </div>
 
   <!-- ═══════════════════════════════════════════════════════════════
@@ -1288,8 +1426,9 @@
         <div class="msg-avatar" *ngIf="msg.sender === 'ai'">🤖</div>
         <div class="msg-content">
           
-          <!-- Answer text with streaming cursor -->
-          <div class="msg-bubble" style="white-space: pre-wrap;">{{ msg.text }}<span *ngIf="msg.streaming" class="stream-cursor">▍</span></div>
+          <!-- Answer text with Markdown rendering (tables, bold, etc.) -->
+          <div class="msg-bubble markdown-body" [innerHTML]="(msg.text | markdownToHtml)"></div>
+          <span *ngIf="msg.streaming" class="stream-cursor">▍</span>
 
           <!-- Direct Navigation / Action Button -->
           <div *ngIf="msg.actionLink" style="margin-top: 0.5rem;">
@@ -1338,4 +1477,3 @@
   </div>
 
 </div>
-
