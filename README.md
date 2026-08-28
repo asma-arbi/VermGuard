@@ -1,98 +1,39 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# 🛡️ VermGuard AI — Real-Time Security Operations Center (SOC) & SLA Analytics Hub Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+> **VermGuard** is a real-time Security Operations Center (SOC) & Support Hub custom-built for **Vermeg** to streamline staff access control, audit administrative operations, and synchronize directly with Vermeg's internal Jira ticketing systems.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## 🌟 Backend Features & API Endpoints
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+### 🎫 1. Jira Service & REST Endpoints (`/jira`)
+- `GET /jira/tickets?team=soc` — Fetches real-time On-Prem, SaaS Cloud (`customfield_18500`), and Security Tool (`customfield_10008`) issues from Jira.
+- `POST /jira/technician-incidents` — Categorizes issues per SOC technician for a given date range.
+- `POST /jira/msp/tickets` — Fetches MSP client tickets with assignee & date filters.
+- `POST /jira/internals/tickets` — Fetches internal department tickets with assignee & date filters.
+- `POST /jira/evaluations/sla-analytics` — Computes team volume leaderboard, Bad Titles audit (< 5 chars / generic keywords), Bad Assignments audit, MTTD (`customfield_17800`) & MTTR metrics.
+- `POST /jira/comment` & `POST /jira/transition` — Adds comments and triggers status transitions directly on Jira tickets.
 
-## Project setup
+### 📝 2. Evaluations Service & REST Endpoints (`/evaluations`)
+- `GET /evaluations/team/:period` — Retrieves monthly evaluation records for all SOC members (7 Vermeg criteria, custom criteria, draft/published status).
+- `POST /evaluations` — Saves or updates monthly team member performance evaluation.
+- `GET /evaluations/my/:userId` — Retrieves published evaluations for a specific SOC analyst.
 
+### 🔔 3. WebSockets Gateway (`EventsGateway`)
+- Real-time Socket.IO gateway broadcasting `evaluation_updated` events.
+
+---
+
+## 🛠️ Tech Stack & Setup
+
+- **Framework**: NestJS 10 (TypeScript)
+- **Database Engine**: SQLite with TypeORM
+- **Jira Integration**: HTTP Basic / Token Auth via Axios HttpService
+- **WebSockets**: Socket.IO Gateway
+
+### Quick Start:
 ```bash
-$ npm install
+npm install
+npm run start:dev
 ```
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Backend API will run on `http://localhost:3000`.
