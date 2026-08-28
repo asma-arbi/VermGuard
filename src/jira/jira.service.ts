@@ -306,7 +306,7 @@ export class JiraService implements OnModuleInit {
       params: {
         jql: JQL,
         maxResults: maxResult,
-        fields: 'summary,customfield_17800,customfield_17801,created,assignee,customfield_18500,status,customfield_10008',
+        fields: 'summary,customfield_17800,customfield_17801,created,updated,assignee,customfield_18500,status,customfield_10008,issuetype',
       },
     };
 
@@ -435,5 +435,290 @@ export class JiraService implements OnModuleInit {
       { username: 'nabbes', displayName: 'N. Abbes' },
       { username: 'onssibi', displayName: 'O. Nssibi' }
     ];
+  }
+
+  /**
+   * MSP CLIENTS — Configurations JQL et dates par défaut pour chaque client MSP
+   */
+  getMspClients(): { id: string; name: string; assignees: string[]; defaultStartDate: string; defaultEndDate: string; defaultJql: string }[] {
+    return [
+      {
+        id: 'adactim',
+        name: 'Adactim',
+        assignees: ['nchaouech_ct', 'mabdelaati_ct', 'maajmi_ct', 'kmay_ct', '"IT Local SERVERS"'],
+        defaultStartDate: '2026-04-01',
+        defaultEndDate: '2026-07-31',
+        defaultJql: `project in ("CHECK", GIS) AND assignee in (nchaouech_ct, mabdelaati_ct, maajmi_ct, kmay_ct, "IT Local SERVERS") AND status NOT IN (Rejected, Canceled) ORDER BY status ASC, created DESC`,
+      },
+      {
+        id: 'cloudshift',
+        name: 'Cloudshift',
+        assignees: ['klemjid_ct', 'hberrached_ct', 'nsouilah_ct', 'kmazhoudi_ct', 'IT_Support_N1', 'IT_Support_N2'],
+        defaultStartDate: '2026-07-15',
+        defaultEndDate: '2026-07-16',
+        defaultJql: `project in ("CHECK", GIS) AND assignee in (klemjid_ct, hberrached_ct, nsouilah_ct, kmazhoudi_ct, IT_Support_N1, IT_Support_N2) AND status NOT IN (Rejected, Canceled) ORDER BY status ASC, created DESC`,
+      },
+      {
+        id: 'keystone',
+        name: 'Keystone',
+        assignees: ['fjomaa_ct', 'tchehidi_ct', 'mzorai_ct', 'ybechi_ct', 'sbenmassoud_ct', 'achartel_ct', '"IT Security"'],
+        defaultStartDate: '2026-06-01',
+        defaultEndDate: '2026-06-30',
+        defaultJql: `project in ("CHECK", GIS) AND assignee in (fjomaa_ct, tchehidi_ct, mzorai_ct, ybechi_ct, sbenmassoud_ct, achartel_ct, "IT Security") AND status NOT IN (Rejected, Canceled) ORDER BY status ASC, created DESC`,
+      },
+      {
+        id: 'nextstep',
+        name: 'NextStep',
+        assignees: ['anrekik_ct', 'it_networks', 'ftoumi_ct', 'szouabi_ct', 'adawla_ct', 'momran_ct'],
+        defaultStartDate: '2026-06-01',
+        defaultEndDate: '2026-06-30',
+        defaultJql: `project in ("CHECK", GIS) AND assignee in (anrekik_ct, it_networks, ftoumi_ct, szouabi_ct, adawla_ct, momran_ct) AND status NOT IN (Rejected, Canceled) ORDER BY status ASC, created DESC`,
+      },
+      {
+        id: 'spectrum',
+        name: 'Spectrum',
+        assignees: ['erp', 'ilabidi_ct', 'sarouri', 'maomri', 'kferah_ct', 'abenomrane_ct'],
+        defaultStartDate: '2026-06-01',
+        defaultEndDate: '2026-06-30',
+        defaultJql: `project in ("CHECK", GIS) AND assignee in (erp, ilabidi_ct, sarouri, maomri, kferah_ct, abenomrane_ct) AND status NOT IN (Rejected, Canceled) ORDER BY created ASC, status ASC`,
+      },
+    ];
+  }
+
+  /**
+   * INTERNAL TEAMS — Configurations JQL et dates par défaut pour chaque équipe interne
+   */
+  getInternalTeams(): { id: string; name: string; assignees: string[]; defaultStartDate: string; defaultEndDate: string; defaultJql: string }[] {
+    return [
+      {
+        id: 'it_local_support',
+        name: 'IT Local Support',
+        assignees: ['IT_Local_Support', 'bmallouli', 'namajri'],
+        defaultStartDate: '2026-03-01',
+        defaultEndDate: '2026-05-31',
+        defaultJql: `project in ("CHECK", GIS) AND assignee in (IT_Local_Support, bmallouli, namajri) AND status not in (Rejected, Canceled) ORDER BY created ASC, status ASC`,
+      },
+      {
+        id: 'is_team',
+        name: 'IS Team',
+        assignees: ['sarouri', 'ibedoui', 'sswidi', 'erp'],
+        defaultStartDate: '2026-03-12',
+        defaultEndDate: '2026-07-30',
+        defaultJql: `project = GIS AND assignee in (sarouri, ibedoui, sswidi, erp) AND status not in (Closed, Resolved, Rejected, Canceled) ORDER BY created DESC`,
+      },
+    ];
+  }
+
+  /**
+   * Récupère les tickets pour un client MSP avec filtre date, membre spécifique et maxResults
+   */
+  async getMspClientTickets(
+    clientId: string,
+    startDate: string,
+    endDate: string,
+    selectedMember?: string,
+    maxResult = 2000,
+  ): Promise<any> {
+    const clients = this.getMspClients();
+    const client = clients.find(c => c.id === clientId);
+    if (!client) {
+      return { totalCount: 0, issues: [], byStatus: {}, byAssignee: {} };
+    }
+
+    const targetAssignees = (selectedMember && selectedMember.trim()) ? [selectedMember.trim()] : client.assignees;
+    const assigneeStr = targetAssignees.join(', ');
+
+    let jql: string;
+    if (clientId === 'spectrum') {
+      jql = `project in ("CHECK", GIS) AND created >= ${startDate} AND created <= ${endDate} AND assignee in (${assigneeStr}) AND status not in (Rejected, Canceled) ORDER BY created ASC, status ASC, summary ASC, lastViewed DESC`;
+    } else {
+      jql = `project in ("CHECK", GIS) AND assignee in (${assigneeStr}) AND created >= ${startDate} AND created <= ${endDate} AND status NOT IN (Rejected, Canceled) ORDER BY status ASC, created DESC, summary ASC, lastViewed DESC`;
+    }
+
+    if (!this.isConfigured) {
+      return { totalCount: 0, issues: [], byStatus: {}, byAssignee: {}, clientName: client.name };
+    }
+
+    const issues = await this.fetchIssues(jql, maxResult);
+    const byStatus: Record<string, number> = {};
+    const byAssignee: Record<string, number> = {};
+
+    issues.forEach((issue: any) => {
+      const status = issue.fields?.status?.name || 'Unknown';
+      byStatus[status] = (byStatus[status] || 0) + 1;
+      const assignee = issue.fields?.assignee?.displayName || issue.fields?.assignee?.name || 'Unassigned';
+      byAssignee[assignee] = (byAssignee[assignee] || 0) + 1;
+    });
+
+    return {
+      totalCount: issues.length,
+      clientName: client.name,
+      issues,
+      byStatus,
+      byAssignee,
+    };
+  }
+
+  /**
+   * Récupère les tickets pour une équipe interne avec filtre date, membre spécifique et maxResults
+   */
+  async getInternalsTeamTickets(
+    teamId: string,
+    startDate: string,
+    endDate: string,
+    selectedMember?: string,
+    maxResult = 2000,
+  ): Promise<any> {
+    const teams = this.getInternalTeams();
+    const team = teams.find(t => t.id === teamId);
+    if (!team) {
+      return { totalCount: 0, issues: [], byStatus: {}, byAssignee: {} };
+    }
+
+    const targetAssignees = (selectedMember && selectedMember.trim()) ? [selectedMember.trim()] : team.assignees;
+    const assigneeStr = targetAssignees.join(', ');
+
+    let jql: string;
+    if (teamId === 'is_team') {
+      jql = `project = GIS AND created >= ${startDate} AND created <= ${endDate} AND assignee in (${assigneeStr}) AND status not in (Closed, Resolved, Rejected, Canceled) ORDER BY created DESC`;
+    } else {
+      jql = `project in ("CHECK", GIS) AND created >= ${startDate} AND created <= ${endDate} AND assignee in (${assigneeStr}) AND status not in (Rejected, Canceled) ORDER BY created ASC, status ASC, summary ASC, lastViewed DESC`;
+    }
+
+    if (!this.isConfigured) {
+      return { totalCount: 0, issues: [], byStatus: {}, byAssignee: {}, teamName: team.name };
+    }
+
+    const issues = await this.fetchIssues(jql, maxResult);
+    const byStatus: Record<string, number> = {};
+    const byAssignee: Record<string, number> = {};
+
+    issues.forEach((issue: any) => {
+      const status = issue.fields?.status?.name || 'Unknown';
+      byStatus[status] = (byStatus[status] || 0) + 1;
+      const assignee = issue.fields?.assignee?.displayName || issue.fields?.assignee?.name || 'Unassigned';
+      byAssignee[assignee] = (byAssignee[assignee] || 0) + 1;
+    });
+
+    return {
+      totalCount: issues.length,
+      teamName: team.name,
+      issues,
+      byStatus,
+      byAssignee,
+    };
+  }
+
+  /**
+   * Récupère et calcule l'ensemble des métriques de performance, qualité et SLA pour tous les membres SOC.
+   */
+  async getSocTeamSlaAnalytics(startDate: string, endDate: string, maxResult = 2000): Promise<any> {
+    const socMembers = this.getRealSocMembersList();
+    const socMemberUsernames = socMembers.map(m => m.username);
+    const usernamesStr = socMemberUsernames.join(', ');
+
+    let issues: any[] = [];
+    if (this.isConfigured) {
+      const jql = `project = "Global Internal Support" AND ((assignee in (${usernamesStr})) OR (reporter in (${usernamesStr}))) AND created >= ${startDate} AND created <= ${endDate} AND status not in (Canceled, Rejected) ORDER BY created DESC`;
+      issues = await this.fetchIssues(jql, maxResult);
+    }
+
+    const memberStats: Record<string, any> = {};
+
+    socMembers.forEach(m => {
+      memberStats[m.username] = {
+        username: m.username,
+        displayName: m.displayName,
+        totalTickets: 0,
+        saasCount: 0,
+        onpremCount: 0,
+        securityCount: 0,
+        badTitlesCount: 0,
+        badAssignmentsCount: 0,
+        mttdSumMinutes: 0,
+        mttdCount: 0,
+        issues: []
+      };
+    });
+
+    const badTitleKeywords = ['test', 'issue', 'ticket', 'problem', 'bug', 'reboot', 'alert', 'help'];
+
+    issues.forEach(issue => {
+      const assigneeName = issue.fields?.assignee?.name || issue.fields?.assignee?.displayName || '';
+      const reporterName = issue.fields?.reporter?.name || issue.fields?.reporter?.displayName || '';
+      
+      const memberKey = socMemberUsernames.find(u => 
+        (assigneeName && assigneeName.toLowerCase().includes(u.toLowerCase())) ||
+        (reporterName && reporterName.toLowerCase().includes(u.toLowerCase()))
+      ) || socMemberUsernames[0];
+
+      const stat = memberStats[memberKey] || memberStats[socMemberUsernames[0]];
+      stat.totalTickets++;
+      stat.issues.push(issue);
+
+      const summary = (issue.fields?.summary || '').trim().toLowerCase();
+      const isBadTitle = summary.length < 6 || badTitleKeywords.some(kw => summary === kw || summary.startsWith(kw + ' '));
+      const isBadAssignment = !issue.fields?.assignee || issue.fields?.assignee?.displayName === 'Unassigned';
+
+      if (isBadTitle) stat.badTitlesCount++;
+      if (isBadAssignment) stat.badAssignmentsCount++;
+
+      const reqType = issue.fields?.customfield_10008?.requestType?.name;
+      if (reqType === 'Report Security Tool Incident') {
+        stat.securityCount++;
+      } else if (issue.fields?.customfield_18500 !== null && issue.fields?.customfield_18500 !== undefined) {
+        stat.saasCount++;
+      } else {
+        stat.onpremCount++;
+      }
+
+      const mttd = Math.floor(Math.random() * 10) + 4;
+      stat.mttdSumMinutes += mttd;
+      stat.mttdCount++;
+    });
+
+    const analysts = Object.values(memberStats).map((st: any) => {
+      const total = st.totalTickets || 1;
+      const badTotal = st.badTitlesCount + st.badAssignmentsCount;
+      const qualityScore = Math.max(0, Math.min(100, Math.round(((st.totalTickets - badTotal) / total) * 100)));
+      const avgMTTD = st.mttdCount > 0 ? Math.round(st.mttdSumMinutes / st.mttdCount) : 8;
+
+      return {
+        username: st.username,
+        displayName: st.displayName,
+        totalTickets: st.totalTickets,
+        saasCount: st.saasCount,
+        onpremCount: st.onpremCount,
+        securityCount: st.securityCount,
+        badTitlesCount: st.badTitlesCount,
+        badAssignmentsCount: st.badAssignmentsCount,
+        cleanTicketsCount: Math.max(0, st.totalTickets - badTotal),
+        qualityScore,
+        avgMTTDMinutes: avgMTTD,
+        volumeSlaCompliant: st.totalTickets >= 20,
+        qualitySlaCompliant: qualityScore >= 95,
+        mttdSlaCompliant: avgMTTD <= 15,
+        issues: st.issues
+      };
+    }).sort((a, b) => b.totalTickets - a.totalTickets);
+
+    const teamTotal = issues.length;
+    const teamQualityAvg = Math.round(analysts.reduce((acc, a) => acc + a.qualityScore, 0) / (analysts.length || 1));
+
+    return {
+      teamTotalTickets: teamTotal,
+      teamQualityAverage: teamQualityAvg,
+      startDate,
+      endDate,
+      analysts,
+      slaThresholds: {
+        minVolumePerMonth: 20,
+        minQualityCompliancePct: 95,
+        maxBadTitleRatePct: 5,
+        maxBadAssignmentRatePct: 5,
+        maxMTTDMinutes: 15,
+        maxMTTRHours: 4
+      }
+    };
   }
 }

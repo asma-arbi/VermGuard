@@ -28,4 +28,12 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.emit('jira_tickets_updated', { team, tickets });
     this.logger.log(`Événement jira_tickets_updated émis pour l'équipe ${team}`);
   }
+
+  /**
+   * Méthode pour envoyer une notification lorsqu'une évaluation est créée ou mise à jour par le manager
+   */
+  emitEvaluationUpdate(data: { userId: number; userEmail?: string; userName: string; period: string; globalScore: number; isPublished: boolean }) {
+    this.server.emit('evaluation_updated', data);
+    this.logger.log(`Événement evaluation_updated émis pour l'utilisateur ID ${data.userId} (${data.userEmail})`);
+  }
 }

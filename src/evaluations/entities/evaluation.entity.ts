@@ -60,6 +60,12 @@ export class Evaluation {
   @Column({ type: 'text', nullable: true })
   comments?: string;
 
+  @Column({ type: 'simple-json', nullable: true })
+  enabledCriteria?: Record<string, boolean>;
+
+  @Column({ type: 'simple-json', nullable: true })
+  customCriteria?: Array<{ id: string; name: string; score: number; enabled: boolean }>;
+
   @Column({ type: 'boolean', default: false })
   isPublished!: boolean;
 

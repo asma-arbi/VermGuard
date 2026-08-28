@@ -6,11 +6,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Enable CORS — explicitly allow x-role custom header from Angular frontend
+  // Enable CORS — explicitly allow x-role and x-user-id custom headers from Angular frontend
   app.enableCors({
     origin: '*',
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-role'],
+    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-role', 'x-user-id'],
   });
 
   // Validation pipe globale

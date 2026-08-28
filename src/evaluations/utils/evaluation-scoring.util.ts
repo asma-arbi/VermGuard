@@ -85,18 +85,42 @@ export function calculateChecklistScore(
 }
 
 /**
- * Calcule le score global comme la moyenne des 7 critères d'évaluation, arrondie à 2 décimales.
+ * Calcule le score global en prenant en compte les critères activés et les critères personnalisés.
  */
-export function calculateGlobalScore(scores: EvaluationScoresInput): number {
-  const sum =
-    scores.support1erNiveauScore +
-    scores.monitoringDetectionScore +
-    scores.qualiteTicketsScore +
-    scores.onboardingOnPremScore +
-    scores.onboardingSaaSScore +
-    scores.securiteScore +
-    scores.checklistScore;
+export function calculateGlobalScore(
+  scores: EvaluationScoresInput,
+  enabledCriteria?: Record<string, boolean>,
+  customCriteria?: Array<{ id: string; name: string; score: number; enabled: boolean }>,
+): number {
+  let totalScore = 0;
+  let count = 0;
 
-  const average = sum / 7;
-  return Math.round(average * 100) / 100;
+  const criteriaMap: Record<string, number> = {
+    support1erNiveau: scores.support1erNiveauScore,
+    monitoringDetection: scores.monitoringDetectionScore,
+    qualiteTickets: scores.qualiteTicketsScore,
+    onboardingOnPrem: scores.onboardingOnPremScore,
+    onboardingSaaS: scores.onboardingSaaSScore,
+    securite: scores.securiteScore,
+    checklist: scores.checklistScore,
+  };
+
+  for (const [key, val] of Object.entries(criteriaMap)) {
+    if (!enabledCriteria || enabledCriteria[key] !== false) {
+      totalScore += (val || 0);
+      count++;
+    }
+  }
+
+  if (customCriteria && Array.isArray(customCriteria)) {
+    customCriteria.forEach(c => {
+      if (c && c.enabled !== false) {
+        totalScore += (c.score || 0);
+        count++;
+      }
+    });
+  }
+
+  if (count === 0) return 0;
+  return Math.round((totalScore / count) * 100) / 100;
 }

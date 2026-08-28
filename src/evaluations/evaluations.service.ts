@@ -13,6 +13,8 @@ import {
   calculateChecklistScore,
 } from './utils/evaluation-scoring.util';
 
+import { EventsGateway } from '../events/events.gateway';
+
 @Injectable()
 export class EvaluationsService {
   constructor(
@@ -20,6 +22,7 @@ export class EvaluationsService {
     private readonly evaluationRepository: Repository<Evaluation>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   /**
@@ -46,7 +49,7 @@ export class EvaluationsService {
       checklistScore,
     };
 
-    const globalScore = calculateGlobalScore(scores);
+    const globalScore = calculateGlobalScore(scores, dto.enabledCriteria, dto.customCriteria);
 
     // Vérifier si une évaluation existe déjà pour cette période
     let existing = await this.evaluationRepository.findOne({
@@ -59,10 +62,21 @@ export class EvaluationsService {
         ...scores,
         globalScore,
         comments: dto.comments ?? existing.comments,
+        enabledCriteria: dto.enabledCriteria ?? existing.enabledCriteria,
+        customCriteria: dto.customCriteria ?? existing.customCriteria,
         isPublished: dto.isPublished !== undefined ? dto.isPublished : existing.isPublished,
         evaluatorId,
       });
-      return this.evaluationRepository.save(existing);
+      const savedExisting = await this.evaluationRepository.save(existing);
+      this.eventsGateway.emitEvaluationUpdate({
+        userId: user.id,
+        userEmail: user.email,
+        userName: `${user.firstName} ${user.lastName}`,
+        period: savedExisting.period,
+        globalScore: savedExisting.globalScore,
+        isPublished: savedExisting.isPublished,
+      });
+      return savedExisting;
     }
 
     const newEval = this.evaluationRepository.create({
@@ -72,10 +86,21 @@ export class EvaluationsService {
       ...scores,
       globalScore,
       comments: dto.comments,
+      enabledCriteria: dto.enabledCriteria,
+      customCriteria: dto.customCriteria,
       isPublished: dto.isPublished ?? false,
     });
 
-    return this.evaluationRepository.save(newEval);
+    const savedNew = await this.evaluationRepository.save(newEval);
+    this.eventsGateway.emitEvaluationUpdate({
+      userId: user.id,
+      userEmail: user.email,
+      userName: `${user.firstName} ${user.lastName}`,
+      period: savedNew.period,
+      globalScore: savedNew.globalScore,
+      isPublished: savedNew.isPublished,
+    });
+    return savedNew;
   }
 
   /**
@@ -83,10 +108,37 @@ export class EvaluationsService {
    * Si l'utilisateur est un membre SOC (isManager = false), filtre pour ne retourner QUE les évaluations publiées.
    */
   async findAllForUser(userId: number, isManager: boolean = false): Promise<Evaluation[]> {
-    const whereClause: any = { userId };
+    let userIdsToMatch: number[] = [userId];
+
+    const targetUser = await this.userRepository.findOne({ where: { id: userId } });
+    if (targetUser) {
+      const allUsers = await this.userRepository.find();
+      const targetLast = (targetUser.lastName || '').toLowerCase().trim();
+      const targetEmail = (targetUser.email || '').toLowerCase().trim();
+      const targetPrefix = targetEmail.split('@')[0] || '';
+
+      const matchedUsers = allUsers.filter(u => {
+        if (u.id === userId) return true;
+        const uLast = (u.lastName || '').toLowerCase().trim();
+        const uEmail = (u.email || '').toLowerCase().trim();
+        const uPrefix = uEmail.split('@')[0] || '';
+
+        if (targetEmail && uEmail === targetEmail) return true;
+        if (targetLast.length > 2 && uLast.length > 2 && targetLast === uLast) return true;
+        if (targetPrefix.length > 3 && uPrefix.length > 3 && (targetPrefix.includes(uPrefix) || uPrefix.includes(targetPrefix))) return true;
+        return false;
+      });
+
+      if (matchedUsers.length > 0) {
+        userIdsToMatch = Array.from(new Set(matchedUsers.map(u => u.id)));
+      }
+    }
+
+    const whereClause: any = { userId: In(userIdsToMatch) };
     if (!isManager) {
       whereClause.isPublished = true;
     }
+
     return this.evaluationRepository.find({
       where: whereClause,
       order: { period: 'DESC' },
@@ -121,15 +173,19 @@ export class EvaluationsService {
     if (dto.isPublished !== undefined) evaluation.isPublished = dto.isPublished;
 
     // Recalculer le score global
-    evaluation.globalScore = calculateGlobalScore({
-      support1erNiveauScore: evaluation.support1erNiveauScore,
-      monitoringDetectionScore: evaluation.monitoringDetectionScore,
-      qualiteTicketsScore: evaluation.qualiteTicketsScore,
-      onboardingOnPremScore: evaluation.onboardingOnPremScore,
-      onboardingSaaSScore: evaluation.onboardingSaaSScore,
-      securiteScore: evaluation.securiteScore,
-      checklistScore: evaluation.checklistScore,
-    });
+    evaluation.globalScore = calculateGlobalScore(
+      {
+        support1erNiveauScore: evaluation.support1erNiveauScore,
+        monitoringDetectionScore: evaluation.monitoringDetectionScore,
+        qualiteTicketsScore: evaluation.qualiteTicketsScore,
+        onboardingOnPremScore: evaluation.onboardingOnPremScore,
+        onboardingSaaSScore: evaluation.onboardingSaaSScore,
+        securiteScore: evaluation.securiteScore,
+        checklistScore: evaluation.checklistScore,
+      },
+      evaluation.enabledCriteria,
+      evaluation.customCriteria,
+    );
 
     return this.evaluationRepository.save(evaluation);
   }

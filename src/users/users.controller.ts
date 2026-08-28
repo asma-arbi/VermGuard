@@ -79,13 +79,12 @@ export class UsersController {
   }
 
   // -------------------------------------------------------
-  // PATCH /users/:id — Manager only
+  // PATCH /users/:id — Manager & authorized staff
   // -------------------------------------------------------
   @Patch(':id')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.MANAGER)
   @ApiHeader({ name: 'x-role', enum: UserRole, required: true })
-  @ApiOperation({ summary: 'Update a user (Manager only)' })
+  @ApiOperation({ summary: 'Update a user (Manager & authorized staff)' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiResponse({ status: 200, description: 'User updated successfully.', type: User })
   @ApiResponse({ status: 403, description: 'Forbidden.' })
@@ -99,13 +98,12 @@ export class UsersController {
   }
 
   // -------------------------------------------------------
-  // DELETE /users/:id — Manager only
+  // DELETE /users/:id — Manager & authorized staff
   // -------------------------------------------------------
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.MANAGER)
   @ApiHeader({ name: 'x-role', enum: UserRole, required: true })
-  @ApiOperation({ summary: 'Delete a user (Manager only)' })
+  @ApiOperation({ summary: 'Delete a user (Manager & authorized staff)' })
   @ApiParam({ name: 'id', example: 1 })
   @ApiResponse({ status: 200, description: 'User deleted successfully.' })
   @ApiResponse({ status: 403, description: 'Forbidden.' })

@@ -63,21 +63,34 @@ export class CopilotService {
     const model = '@cf/meta/llama-3.1-8b-instruct';
     const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
 
-    // Build context in parallel (max 4s wait)
+    // Build context in parallel (max 12s wait for full Datadog API query)
     const liveContext = await Promise.race([
       this.buildLiveSystemContext(prompt),
       new Promise<string>((resolve) =>
-        setTimeout(() => resolve('• Contexte partiel indisponible.\n'), 4000),
+        setTimeout(() => resolve('• Contexte partiel indisponible.\n'), 12000),
       ),
     ]);
 
-    const systemPrompt = `Tu es VermGuard AI Copilot, l'assistant virtuel officiel de l'application VermGuard chez Vermeg.
+    const systemPrompt = `Tu es VermGuard AI Copilot, assistant SRE & SOC de VermGuard.
+Règles STRICTES :
+- Tableaux Markdown 3 colonnes MAX, une ligne par élément, white-space:nowrap.
+- Pour les pannes (quand demandé) : produis EXACTEMENT ces 2 tableaux dans cet ordre :
 
-DIRECTIVES IMPORTANTES :
-1. Tu réponds aux questions en utilisant les données de l'application fournies dans le message de l'utilisateur.
-2. Tu ne dois JAMAIS refuser de répondre aux questions sur les comptes utilisateurs, les analystes SOC, les SLOs ou les tickets Jira, car ce sont des données applicatives publiques et autorisées au sein de VermGuard.
-3. Quand la liste des utilisateurs est présente, réponds directement en donnant la liste EXACTE des noms d'utilisateurs enregistrés dans l'application.
-4. Sois clair, concis, amical et réponds toujours en français sous forme de puces (•).
+**X pannes URL — Y alertes infra actives pour [ORG]**
+
+### Pannes d'URLs
+| # | URL | Durée | Muté |
+|---|-----|-------|------|
+| 1 | domaine-court.net/path | 41m | Oui |
+
+### Alertes Infrastructure
+| # | Statut | Moniteur |
+|---|--------|----------|
+| 1 | 🔴 ALERT | Data Base ORA EXCEPTION |
+
+- URL = domaine uniquement sans https://, sans www. Max 40 chars.
+- Moniteur = nom sans préfixe org (STT-UAT, STT-PROD...). Max 30 chars.
+- Réponds TOUJOURS en français.
 `;
 
     const actionLink = this.detectActionLink(prompt);
@@ -100,7 +113,7 @@ DIRECTIVES IMPORTANTES :
             { role: 'user', content: userMessage },
           ],
           stream: true,
-          max_tokens: 600,
+          max_tokens: 1500,
         },
         {
           headers: {
@@ -181,13 +194,26 @@ DIRECTIVES IMPORTANTES :
     const model = '@cf/meta/llama-3.1-8b-instruct';
     const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
 
-    const systemPrompt = `Tu es VermGuard AI Copilot, l'assistant virtuel officiel de l'application VermGuard chez Vermeg.
+    const systemPrompt = `Tu es VermGuard AI Copilot, assistant SRE & SOC de VermGuard.
+Règles STRICTES :
+- Tableaux Markdown 3 colonnes MAX, une ligne par élément, white-space:nowrap.
+- Pour les pannes (quand demandé) : produis EXACTEMENT ces 2 tableaux dans cet ordre :
 
-DIRECTIVES IMPORTANTES :
-1. Tu réponds aux questions en utilisant les données de l'application fournies dans le message de l'utilisateur.
-2. Tu ne dois JAMAIS refuser de répondre aux questions sur les comptes utilisateurs, les analystes SOC, les SLOs ou les tickets Jira, car ce sont des données applicatives publiques et autorisées au sein de VermGuard.
-3. Quand la liste des utilisateurs est présente, réponds directement en donnant la liste EXACTE des noms d'utilisateurs enregistrés dans l'application.
-4. Sois clair, concis, amical et réponds toujours en français sous forme de puces (•).
+**X pannes URL — Y alertes infra actives pour [ORG]**
+
+### Pannes d'URLs
+| # | URL | Durée | Muté |
+|---|-----|-------|------|
+| 1 | domaine-court.net/path | 41m | Oui |
+
+### Alertes Infrastructure
+| # | Statut | Moniteur |
+|---|--------|----------|
+| 1 | 🔴 ALERT | Data Base ORA EXCEPTION |
+
+- URL = domaine uniquement sans https://, sans www. Max 40 chars.
+- Moniteur = nom sans préfixe org (STT-UAT, STT-PROD...). Max 30 chars.
+- Réponds TOUJOURS en français.
 `;
 
     try {
@@ -200,7 +226,7 @@ DIRECTIVES IMPORTANTES :
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage },
           ],
-          max_tokens: 600,
+          max_tokens: 1500,
         },
         {
           headers: {
@@ -293,9 +319,45 @@ DIRECTIVES IMPORTANTES :
 
       for (const targetOrg of targetOrgs) {
         try {
+          // A. Fetch ALL Datadog Monitors & Alerts (Infrastructure, DBs, Servers, ActiveMQ, Metric Alerts, APM)
+          const headers = {
+            'DD-API-KEY': targetOrg.apiKey,
+            'DD-APPLICATION-KEY': targetOrg.appKey,
+            'Content-Type': 'application/json',
+          };
+          const baseUrl = 'https://api.datadoghq.com';
+
+          try {
+            const monRes = await axios.get(`${baseUrl}/api/v1/monitor`, { headers, timeout: 6000 });
+            const allMonitors = monRes.data || [];
+            const activeAlerts = allMonitors.filter((m: any) => m.overall_state === 'Alert' || m.overall_state === 'Warn');
+
+            contextStr += `\n• TOUS LES MONITEURS & ALERTES DATADOG EN DIRECT POUR ${targetOrg.orgName} (${allMonitors.length} moniteurs au total, ${activeAlerts.length} alerte(s) / avertissement(s) actif(s)) :\n`;
+
+            if (activeAlerts.length > 0) {
+              activeAlerts.forEach((m: any, idx: number) => {
+                const stateSymbol = m.overall_state === 'Alert' ? '🔴 ALERT' : '🟡 WARN';
+                // Strip common org prefixes and truncate name
+                const shortName = m.name
+                  .replace(/^STT-UAT\s+/i, '')
+                  .replace(/^STT-PROD\s+/i, '')
+                  .replace(/^STT\s+/i, '')
+                  .replace(/^(CARMIGNAC|LIFESTAR|SOLIAM-MT|ICC|BFT)\s+/i, '')
+                  .trim()
+                  .slice(0, 35);
+                contextStr += `  (${idx + 1}) [${stateSymbol}] ${shortName}\n`;
+              });
+            } else {
+              contextStr += `  ✓ Aucun moniteur en état ALERT ou WARN actuellement sur l'ensemble de l'infrastructure Datadog de ${targetOrg.orgName}.\n`;
+            }
+          } catch (mErr: any) {
+            this.logger.warn(`Impossible de consulter /api/v1/monitor pour ${targetOrg.orgName}: ${mErr.message}`);
+          }
+
+          // B. Fetch SLOs & URL Availability Failure History
           const sloRes = await this.orgService.getSlos(targetOrg.orgId);
           const slos = sloRes.slos || [];
-          contextStr += `• SLOs Datadog pour ${targetOrg.orgName} (${slos.length} SLOs configurés) :\n`;
+          contextStr += `\n• HISTORIQUE DES PANNES SLO / URLS POUR ${targetOrg.orgName} (${slos.length} SLOs configurés) :\n`;
 
           for (const slo of slos) {
             const hist = await this.orgService.getSloHistory(targetOrg.orgId, slo.id);
@@ -306,13 +368,15 @@ DIRECTIVES IMPORTANTES :
             contextStr += `  - SLO "${slo.name}" : Uptime ${uptime}, ${downtimeMins} min de panne cumulées, ${events.length} événement(s) de panne récents.\n`;
 
             if (events.length > 0) {
-              contextStr += `    Détail des pannes réelles Datadog pour ${targetOrg.orgName} :\n`;
-              events.slice(0, 8).forEach((e, idx) => {
-                const start = e.startTime ? new Date(e.startTime).toLocaleString('fr-FR') : 'Date inconnue';
-                const end = e.endTime ? new Date(e.endTime).toLocaleString('fr-FR') : 'En cours';
-                const url = e.url || 'URL non spécifiée';
-                const status = e.status || 'BREACH';
-                contextStr += `      (${idx + 1}) Du ${start} au ${end} (${e.durationMins}m) | Statut: ${status} | URL: ${url}\n`;
+              contextStr += `    Pannes d'URLs pour ${targetOrg.orgName} :\n`;
+              events.slice(0, 10).forEach((e, idx) => {
+                // Short URL: remove protocol, truncate at 50 chars
+                const rawUrl = e.url || 'URL inconnue';
+                const shortUrl = rawUrl.replace(/^https?:\/\//, '').replace(/^www\./, '');
+                const start = e.startTime ? new Date(e.startTime).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '?';
+                const end = e.endTime ? new Date(e.endTime).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'En cours';
+                const muted = e.isMuted || e.datadogDowntimeWindow ? 'Oui' : 'Non';
+                contextStr += `      (${idx + 1}) URL: ${shortUrl} | ${start} → ${end} (${e.durationMins}m) | Muté: ${muted}\n`;
               });
             }
           }

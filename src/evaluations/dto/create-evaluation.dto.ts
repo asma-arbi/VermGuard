@@ -71,4 +71,10 @@ export class CreateEvaluationDto {
   @ApiPropertyOptional({ description: 'Indique si l\'évaluation est publiée et visible par le membre SOC', example: false })
   @IsOptional()
   isPublished?: boolean;
+
+  @IsOptional()
+  enabledCriteria?: Record<string, boolean>;
+
+  @IsOptional()
+  customCriteria?: Array<{ id: string; name: string; score: number; enabled: boolean }>;
 }

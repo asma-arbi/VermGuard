@@ -164,4 +164,74 @@ Les requêtes JQL sont définies dans \`jira-queries.constants.ts\` et réutilis
   async getSocMembers() {
     return this.jiraService.getRealSocMembersList();
   }
+
+  /**
+   * GET /jira/msp/clients
+   * Retourne la liste des clients MSP avec leurs métadonnées
+   */
+  @Get('msp/clients')
+  async getMspClients() {
+    return this.jiraService.getMspClients();
+  }
+
+  /**
+   * POST /jira/msp/tickets
+   * Récupère les tickets d'un client MSP filtré par dates
+   */
+  @Post('msp/tickets')
+  async getMspTickets(
+    @Body('clientId') clientId: string,
+    @Body('startDate') startDate: string,
+    @Body('endDate') endDate: string,
+    @Body('selectedMember') selectedMember: string,
+    @Body('maxResult') maxResult: number,
+  ) {
+    if (!clientId || !startDate || !endDate) {
+      throw new BadRequestException('Paramètres clientId, startDate et endDate requis.');
+    }
+    return this.jiraService.getMspClientTickets(clientId, startDate, endDate, selectedMember, maxResult || 2000);
+  }
+
+  /**
+   * GET /jira/internals/teams
+   * Retourne la liste des équipes internes avec leurs métadonnées
+   */
+  @Get('internals/teams')
+  async getInternalTeams() {
+    return this.jiraService.getInternalTeams();
+  }
+
+  /**
+   * POST /jira/internals/tickets
+   * Récupère les tickets d'une équipe interne filtrée par dates
+   */
+  @Post('internals/tickets')
+  async getInternalsTickets(
+    @Body('teamId') teamId: string,
+    @Body('startDate') startDate: string,
+    @Body('endDate') endDate: string,
+    @Body('selectedMember') selectedMember: string,
+    @Body('maxResult') maxResult: number,
+  ) {
+    if (!teamId || !startDate || !endDate) {
+      throw new BadRequestException('Paramètres teamId, startDate et endDate requis.');
+    }
+    return this.jiraService.getInternalsTeamTickets(teamId, startDate, endDate, selectedMember, maxResult || 2000);
+  }
+
+  /**
+   * POST /jira/evaluations/sla-analytics
+   * Récupère les métriques globales de performance, qualité et SLA de l'équipe SOC
+   */
+  @Post('evaluations/sla-analytics')
+  async getSocTeamSlaAnalytics(
+    @Body('startDate') startDate: string,
+    @Body('endDate') endDate: string,
+    @Body('maxResult') maxResult: number,
+  ) {
+    if (!startDate || !endDate) {
+      throw new BadRequestException('Paramètres startDate et endDate requis.');
+    }
+    return this.jiraService.getSocTeamSlaAnalytics(startDate, endDate, maxResult || 2000);
+  }
 }

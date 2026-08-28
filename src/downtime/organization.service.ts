@@ -244,31 +244,182 @@ export class OrganizationService {
         // Extract Digital Experience URLs
         const { primaryUrl, allUrls } = this.resolveUrlsForSlo({ name, description: '' }, synTests, org.orgName);
 
-        // Fetch Datadog downtimes for this Org
+        // Fetch Datadog downtimes (v1 & v2) & events for this Org (as per DatadogSyntheticsMonitor)
         let activeDowntimesList: any[] = [];
+        let historicalDowntimeEventsMap = new Map<number, Array<{ startTs: number; endTs: number; user?: string }>>();
+
+        const seenDtIds = new Set<string | number>();
+
+        // 1. Current downtimes v1 API
         try {
           const dtRes = await axios.get(`${baseUrl}/api/v1/downtime`, {
             headers,
             params: { current_only: false },
             timeout: 5000,
           });
-          activeDowntimesList = dtRes.data || [];
+          (dtRes.data || []).forEach((dt: any) => {
+            if (dt.id && !seenDtIds.has(dt.id)) {
+              seenDtIds.add(dt.id);
+              activeDowntimesList.push(dt);
+            }
+          });
         } catch (e) {}
+
+        // 2. Current downtimes v2 API
+        try {
+          const dtV2Res = await axios.get(`${baseUrl}/api/v2/downtime`, {
+            headers,
+            timeout: 5000,
+          });
+          const v2List = dtV2Res.data?.data || [];
+          v2List.forEach((dt: any) => {
+            const id = dt.id;
+            if (id && !seenDtIds.has(id)) {
+              seenDtIds.add(id);
+              const attrs = dt.attributes || {};
+              activeDowntimesList.push({
+                id,
+                start: attrs.start,
+                end: attrs.end,
+                scope: attrs.scope || ['*'],
+                monitor_id: attrs.monitor_id,
+                message: attrs.message || '',
+                active: attrs.active,
+              });
+            }
+          });
+        } catch (e) {}
+
+        if (data.monitors && Array.isArray(data.monitors)) {
+          // Prepare 32-day max timeframe chunks for Datadog Events API (matching Python script)
+          const maxWindowSec = 2764800; // 32 days
+          const eventChunks: Array<{ start: number; end: number }> = [];
+          let cStart = fromTs;
+          while (cStart < toTs) {
+            const cEnd = Math.min(cStart + maxWindowSec, toTs);
+            eventChunks.push({ start: cStart, end: cEnd });
+            cStart = cEnd;
+          }
+
+          await Promise.all(
+            data.monitors.map(async (mon: any) => {
+              const mId = mon.monitor_id || mon.id;
+              if (!mId) return;
+              try {
+                const allRawEvs: any[] = [];
+                for (const chunk of eventChunks) {
+                  try {
+                    const evRes = await axios.get(`${baseUrl}/api/v1/events`, {
+                      headers,
+                      params: {
+                        start: chunk.start,
+                        end: chunk.end,
+                        tags: `monitor_id:${mId}`,
+                      },
+                      timeout: 5000,
+                    });
+                    const evs = evRes.data?.events || [];
+                    allRawEvs.push(...evs);
+                  } catch (err) {}
+                }
+
+                allRawEvs.sort((a: any, b: any) => a.date_happened - b.date_happened);
+
+                const unmergedIntervals: Array<{ startTs: number; endTs: number; user?: string }> = [];
+                let openDt: { startTs: number; endTs: number; user?: string } | null = null;
+
+                for (const e of allRawEvs) {
+                  const text = (e.text || '').toLowerCase();
+                  const title = (e.title || '').toLowerCase();
+                  const ts = e.date_happened;
+
+                  // Extract user if available
+                  let user = e.title ? e.title.split(' ')[0] : 'User';
+                  if (user.includes('@')) {
+                    // email found
+                  } else {
+                    const emailMatch = (e.text || '').match(/@([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+)/);
+                    if (emailMatch) user = emailMatch[1];
+                  }
+
+                  const isStarted = title.includes('started scheduled downtime') || text.includes('started') || text.includes('muted');
+                  const isEnded = title.includes('canceled downtime') || title.includes('ended scheduled downtime') || text.includes('canceled') || text.includes('expired') || text.includes('unmuted');
+
+                  if (isStarted) {
+                    // Try parsing duration from text (Python script rule)
+                    let durSec = 14400; // default 4h
+                    const hrMatch = text.match(/(\d+)\s*(?:hour|hr)/i);
+                    const minMatch = text.match(/(\d+)\s*(?:minute|min)/i);
+                    if (hrMatch) durSec = parseInt(hrMatch[1], 10) * 3600;
+                    else if (minMatch) durSec = parseInt(minMatch[1], 10) * 60;
+
+                    openDt = { startTs: ts, endTs: ts + durSec, user };
+                  } else if (isEnded) {
+                    if (openDt) {
+                      openDt.endTs = ts;
+                      unmergedIntervals.push(openDt);
+                      openDt = null;
+                    }
+                  }
+                }
+                if (openDt) unmergedIntervals.push(openDt);
+
+                // Merge adjacent or overlapping downtime intervals (gap <= 300 seconds)
+                const mergedIntervals: Array<{ startTs: number; endTs: number; user?: string }> = [];
+                for (const dt of unmergedIntervals) {
+                  if (mergedIntervals.length === 0) {
+                    mergedIntervals.push({ ...dt });
+                  } else {
+                    const last = mergedIntervals[mergedIntervals.length - 1];
+                    if (dt.startTs <= (last.endTs + 300)) {
+                      last.endTs = Math.max(last.endTs, dt.endTs);
+                    } else {
+                      mergedIntervals.push({ ...dt });
+                    }
+                  }
+                }
+
+                historicalDowntimeEventsMap.set(Number(mId), mergedIntervals);
+              } catch (e: any) {
+                this.logger.error(`Error fetching events for monitor #${mId}: ${e.message}`);
+              }
+            })
+          );
+        }
 
         const resolveDowntimeForEvent = async (monId: number | null, eventUrl: string | null, startTsSec: number, endTsSec: number) => {
           let isMuted = false;
           let datadogDowntimeWindow: any = null;
 
+          // Priority 1: Check historical downtime intervals from Datadog Events API for this monitor
+          const numMonId = monId ? Number(monId) : null;
+          if (numMonId && historicalDowntimeEventsMap.has(numMonId)) {
+            const intervals = historicalDowntimeEventsMap.get(numMonId) || [];
+            const matchedInt = intervals.find(
+              dt => startTsSec <= (dt.endTs + 900) && endTsSec >= (dt.startTs - 900)
+            );
+            if (matchedInt) {
+              isMuted = true;
+              const startStr = new Date(matchedInt.startTs * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const endStr = new Date(matchedInt.endTs * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const mins = Math.max(1, Math.round((matchedInt.endTs - matchedInt.startTs) / 60));
+              const hours = Math.floor(mins / 60);
+              const rMins = mins % 60;
+              const durStr = hours > 0 ? `${hours}h ${rMins}m` : `${mins}m`;
+              const userStr = matchedInt.user ? ` (par ${matchedInt.user})` : '';
+              datadogDowntimeWindow = `${startStr} ➔ ${endStr} (${durStr})${userStr}`;
+              return { isMuted, datadogDowntimeWindow };
+            }
+          }
+
+          // Priority 2: Check active/scheduled Downtimes list (GET /api/v1/downtime)
           for (const dt of activeDowntimesList) {
             if (dt.disabled) continue;
             let isMonMatch = false;
 
-            // 1. Exact monitor_id match
             if (dt.monitor_id && monId && dt.monitor_id === monId) {
               isMonMatch = true;
-            }
-            // 2. Scope match (wildcard '*' scope or URL match)
-            else if (dt.scope && Array.isArray(dt.scope)) {
+            } else if (dt.scope && Array.isArray(dt.scope)) {
               for (const sc of dt.scope) {
                 if (sc === '*' || (eventUrl && sc.includes(eventUrl))) {
                   isMonMatch = true;
@@ -280,23 +431,43 @@ export class OrganizationService {
             let isTimeMatch = false;
             const dtStart = dt.start || 0;
             const dtEnd = dt.end || 0;
-            if (dtEnd) {
-              // Mute has an explicit end — event must be fully within the mute window (±15 min tolerance)
-              isTimeMatch = startTsSec >= (dtStart - 900) && endTsSec <= (dtEnd + 900);
+            if (dtEnd > 0) {
+              isTimeMatch = startTsSec <= (dtEnd + 900) && endTsSec >= (dtStart - 900);
             } else if (dtStart > 0) {
-              // Mute is indefinite — event must start AFTER the mute was created
-              isTimeMatch = startTsSec >= dtStart;
+              isTimeMatch = endTsSec >= dtStart;
             }
 
             if (isMonMatch && isTimeMatch) {
               isMuted = true;
-              const startStr = dtStart
-                ? new Date(dtStart * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                : 'N/A';
-              const endStr = dtEnd
-                ? new Date(dtEnd * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                : 'Permanent / Indéfini';
-              datadogDowntimeWindow = `${startStr} ➔ ${endStr}`;
+              
+              // Bound start and end timestamps so long-running / permanent Mute schedules (e.g. from 2025)
+              // don't print illogical multi-month 6500-hour durations for a 15-minute event.
+              let effectiveStartSec = dtStart;
+              if (!dtStart || (startTsSec - dtStart) > 86400) {
+                effectiveStartSec = startTsSec;
+              }
+
+              let effectiveEndSec = dtEnd;
+              if (!dtEnd || (dtEnd - endTsSec) > 86400) {
+                effectiveEndSec = endTsSec;
+              }
+
+              const startStr = new Date(effectiveStartSec * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+              const endStr = new Date(effectiveEndSec * 1000).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+              const mins = Math.max(1, Math.round((effectiveEndSec - effectiveStartSec) / 60));
+              const hours = Math.floor(mins / 60);
+              const rMins = mins % 60;
+              const durStr = hours > 0 ? `${hours}h ${rMins}m` : `${mins}m`;
+
+              // Extract user/operator from message or creator if present
+              let operatorStr = 'Datadog Maintenance';
+              if (dt.message) {
+                const match = dt.message.match(/@([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+)/);
+                if (match) operatorStr = match[1];
+              }
+
+              datadogDowntimeWindow = `${startStr} ➔ ${endStr} (${durStr}) (par ${operatorStr})`;
               break;
             }
           }
@@ -412,8 +583,6 @@ export class OrganizationService {
                 reason: exclusionInfo?.reason || 'Approved Maintenance / Outage Exclusion',
                 excludedBy: exclusionInfo?.excludedBy || 'SOC Admin',
               });
-            }
-              }
             }
           }
         }
