@@ -208,20 +208,44 @@ export class JiraTicketsComponent implements OnInit, OnDestroy {
     return { critical, high, medium };
   }
 
-  /** Appel API — récupère les tickets selon l'équipe active */
+  /** Appel API — récupère les tickets selon l'équipe active (avec cache instant 0ms) */
   loadTickets(): void {
-    this.isLoading = true;
     this.errorMessage = '';
-    this.teamTickets = null;
+
+    // Instant 0ms cache: show previous tickets immediately
+    const cacheKey = `vermeg_jira_tickets_${this.activeTeam}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.onPrem || parsed.saas)) {
+          this.teamTickets = parsed;
+          this.isLoading = false;
+          this.cdr.detectChanges();
+        } else {
+          this.isLoading = true;
+          this.teamTickets = null;
+        }
+      } catch (e) {
+        this.isLoading = true;
+        this.teamTickets = null;
+      }
+    } else {
+      this.isLoading = true;
+      this.teamTickets = null;
+    }
 
     this.jiraService.getTicketsForTeam(this.activeTeam).subscribe({
       next: (data) => {
         this.teamTickets = data;
         this.isLoading = false;
-        this.cdr.detectChanges(); // Force UI update immediately
+        try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        this.errorMessage = 'Unable to load Jira tickets. Check backend connection.';
+        if (!cached) {
+          this.errorMessage = 'Unable to load Jira tickets. Check backend connection.';
+        }
         this.isLoading = false;
         console.error(err);
         this.cdr.detectChanges();

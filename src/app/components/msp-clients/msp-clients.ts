@@ -399,10 +399,35 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
 
   analyze() {
     if (!this.selectedClientId || !this.startDate || !this.endDate) return;
-    this.loading = true;
+
     this.errorMsg = '';
-    this.result = null;
-    this.destroyCharts();
+    const cacheKey = `vermeg_msp_cache_${this.selectedClientId}_${this.selectedMember}_${this.startDate}_${this.endDate}_${this.maxResult}`;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.totalCount !== undefined) {
+          this.result = parsed;
+          this.loading = false;
+          this.destroyCharts();
+          this.cdr.detectChanges();
+          setTimeout(() => this.renderCharts(), 50);
+        } else {
+          this.loading = true;
+          this.result = null;
+          this.destroyCharts();
+        }
+      } catch (e) {
+        this.loading = true;
+        this.result = null;
+        this.destroyCharts();
+      }
+    } else {
+      this.loading = true;
+      this.result = null;
+      this.destroyCharts();
+    }
 
     this.http.post<TicketResult>(`${this.API}/msp/tickets`, {
       clientId: this.selectedClientId,
@@ -414,12 +439,17 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
       next: (data) => {
         this.result = data;
         this.loading = false;
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch (e) {}
         this.cdr.detectChanges();
-        setTimeout(() => this.renderCharts(), 100);
+        setTimeout(() => this.renderCharts(), 50);
       },
       error: (err) => {
+        if (!cached) {
+          this.errorMsg = 'Failed to fetch tickets. ' + (err?.error?.message || err.message || '');
+        }
         this.loading = false;
-        this.errorMsg = 'Failed to fetch tickets. ' + (err?.error?.message || err.message || '');
         this.cdr.detectChanges();
       }
     });
@@ -502,7 +532,7 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
     if (statusEl) {
       const labels = Object.keys(this.result.byStatus);
       const data = Object.values(this.result.byStatus);
-      const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#06b6d4','#f97316'];
+      const colors = ['#7c3aed','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
       this.statusChart = new Chart(statusEl, {
         type: 'doughnut',
         data: { labels, datasets: [{ data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2, borderColor: '#fff' }] },
@@ -513,6 +543,9 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
 
   exportPdfReport() {
     if (!this.result || !this.result.issues) return;
+
+    this.loading = true;
+    this.cdr.detectChanges();
 
     const exportDate = new Date().toLocaleString('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
@@ -660,54 +693,63 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
 
     document.body.appendChild(container);
 
-    Promise.all([
-      import('jspdf'),
-      import('html2canvas')
-    ]).then(([jsPdfModule, html2canvasModule]) => {
-      const jsPDF = jsPdfModule.default || jsPdfModule;
-      const html2canvas = html2canvasModule.default || html2canvasModule;
+    setTimeout(() => {
+      Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]).then(([jsPdfModule, html2canvasModule]) => {
+        const jsPDF = jsPdfModule.default || jsPdfModule;
+        const html2canvas = html2canvasModule.default || html2canvasModule;
 
-      html2canvas(container, { scale: 2, useCORS: true }).then(canvas => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container);
-        }
+        html2canvas(container, { scale: 1.4, useCORS: true, logging: false }).then(canvas => {
+          if (document.body.contains(container)) {
+            document.body.removeChild(container);
+          }
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
+          const imgData = canvas.toDataURL('image/jpeg', 0.88);
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
 
-        const imgWidth = pageWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-        let heightLeft = imgHeight;
-        let position = 0;
+          let heightLeft = imgHeight;
+          let position = 0;
 
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
           pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
-        }
 
-        const filename = `Rapport_MSP_${this.selectedClientId}_${this.selectedMember || 'all'}_${this.startDate}_${this.endDate}.pdf`;
-        pdf.save(filename);
+          while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
+
+          const safeClient = (this.getClientName() || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
+          const filename = `Rapport_MSP_${safeClient}_${this.startDate}_${this.endDate}.pdf`;
+          pdf.save(filename);
+          this.loading = false;
+          this.cdr.detectChanges();
+        }).catch(err => {
+          if (document.body.contains(container)) {
+            document.body.removeChild(container);
+          }
+          console.error('PDF Canvas error:', err);
+          this.loading = false;
+          this.cdr.detectChanges();
+          alert('Erreur lors de la génération du PDF.');
+        });
       }).catch(err => {
         if (document.body.contains(container)) {
           document.body.removeChild(container);
         }
-        console.error('PDF Canvas error:', err);
-        alert('Erreur lors de la génération du PDF.');
+        console.error('PDF Library import error:', err);
+        this.loading = false;
+        this.cdr.detectChanges();
+        alert('Erreur lors du chargement des bibliothèques PDF.');
       });
-    }).catch(err => {
-      if (document.body.contains(container)) {
-        document.body.removeChild(container);
-      }
-      console.error('PDF Library import error:', err);
-      alert('Erreur lors du chargement des bibliothèques PDF.');
-    });
+    }, 50);
   }
 }

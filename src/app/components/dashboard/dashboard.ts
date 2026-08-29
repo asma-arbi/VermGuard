@@ -518,12 +518,34 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.socTechLoading = true;
     this.socTechError = '';
-    this.socTechTickets = null;
     this.onpremPage = 1;
     this.saasPage = 1;
     this.securityPage = 1;
+
+    // Instant 0ms cache: show previous results immediately
+    const cacheKey = `vermeg_soc_tickets_${this.selectedSocMember}_${this.socStartDate}_${this.socEndDate}_${this.socMaxResult}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.onprem || parsed.saas || parsed.security)) {
+          this.socTechTickets = parsed;
+          this.socTechLoading = false;
+          this.cdr.detectChanges();
+          this.initClientChart();
+        } else {
+          this.socTechLoading = true;
+          this.socTechTickets = null;
+        }
+      } catch (e) {
+        this.socTechLoading = true;
+        this.socTechTickets = null;
+      }
+    } else {
+      this.socTechLoading = true;
+      this.socTechTickets = null;
+    }
 
     this.jiraService.getIncidentsPerSocTechnician(
       this.selectedSocMember,
@@ -534,11 +556,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: (data) => {
         this.socTechTickets = data;
         this.socTechLoading = false;
+        try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
         this.cdr.detectChanges();
         this.initClientChart();
       },
       error: (err) => {
-        this.socTechError = 'Unable to fetch incidents from Jira. Please check credentials/connection.';
+        if (!cached) {
+          this.socTechError = 'Unable to fetch incidents from Jira. Please check credentials/connection.';
+        }
         this.socTechLoading = false;
         this.cdr.detectChanges();
       }
@@ -959,70 +984,88 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     document.body.appendChild(container);
 
-    Promise.all([
-      import('jspdf'),
-      import('html2canvas')
-    ]).then(([jsPdfModule, html2canvasModule]) => {
-      const jsPDF = jsPdfModule.default || jsPdfModule;
-      const html2canvas = html2canvasModule.default || html2canvasModule;
+    setTimeout(() => {
+      Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]).then(([jsPdfModule, html2canvasModule]) => {
+        const jsPDF = jsPdfModule.default || jsPdfModule;
+        const html2canvas = html2canvasModule.default || html2canvasModule;
 
-      html2canvas(container, { scale: 2, useCORS: true }).then(canvas => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container);
-        }
+        html2canvas(container, { scale: 1.4, useCORS: true, logging: false }).then(canvas => {
+          if (document.body.contains(container)) {
+            document.body.removeChild(container);
+          }
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth(); // 210mm
-        const pageHeight = pdf.internal.pageSize.getHeight(); // 297mm
+          const imgData = canvas.toDataURL('image/jpeg', 0.88);
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
 
-        const imgWidth = pageWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-        let heightLeft = imgHeight;
-        let position = 0;
+          let heightLeft = imgHeight;
+          let position = 0;
 
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
           pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
-        }
 
-        const filename = `Rapport_SOC_${this.selectedSocMember}_${this.socStartDate || 'start'}_${this.socEndDate || 'end'}.pdf`;
-        pdf.save(filename);
+          while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
+
+          const safeAnalyst = analystName.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const filename = `Rapport_SOC_${safeAnalyst}_${this.socStartDate || 'start'}_${this.socEndDate || 'end'}.pdf`;
+          pdf.save(filename);
+        }).catch(err => {
+          if (document.body.contains(container)) {
+            document.body.removeChild(container);
+          }
+          console.error('PDF Canvas error:', err);
+          alert('Erreur lors de la génération du PDF.');
+        });
       }).catch(err => {
         if (document.body.contains(container)) {
           document.body.removeChild(container);
         }
-        console.error('PDF Canvas error:', err);
-        alert('Erreur lors de la capture du PDF.');
+        console.error('PDF Library import error:', err);
+        alert('Erreur lors du chargement des bibliothèques PDF.');
       });
-    }).catch(err => {
-      if (document.body.contains(container)) {
-        document.body.removeChild(container);
-      }
-      console.error('PDF Library import error:', err);
-      alert('Erreur lors du chargement de la bibliothèque PDF.');
-    });
+    }, 50);
   }
 
   // --- LOGIC ---
 
   loadUsers() {
-    // We load all users, and then apply frontend filtering
+    // Instant 0ms cache: show users from localStorage immediately
+    const cacheKey = 'vermeg_users_cache';
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          this.users = parsed;
+          this.applyFilters();
+          this.initUserProfile();
+          this.cdr.detectChanges();
+        }
+      } catch (e) {}
+    }
+
     this.userService.getUsers().subscribe({
       next: (data) => {
         this.users = data;
         this.applyFilters();
         this.initUserProfile();
-        this.cdr.detectChanges(); // Force UI update immediately
+        try { localStorage.setItem(cacheKey, JSON.stringify(data)); } catch (e) {}
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        this.showError('Error loading data.');
+        if (!cached) this.showError('Error loading data.');
         console.error(err);
         this.cdr.detectChanges();
       }

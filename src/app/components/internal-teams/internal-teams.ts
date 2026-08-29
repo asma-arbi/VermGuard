@@ -399,10 +399,35 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
 
   analyze() {
     if (!this.selectedTeamId || !this.startDate || !this.endDate) return;
-    this.loading = true;
+
     this.errorMsg = '';
-    this.result = null;
-    this.destroyCharts();
+    const cacheKey = `vermeg_int_cache_${this.selectedTeamId}_${this.selectedMember}_${this.startDate}_${this.endDate}_${this.maxResult}`;
+    const cached = localStorage.getItem(cacheKey);
+
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.totalCount !== undefined) {
+          this.result = parsed;
+          this.loading = false;
+          this.destroyCharts();
+          this.cdr.detectChanges();
+          setTimeout(() => this.renderCharts(), 50);
+        } else {
+          this.loading = true;
+          this.result = null;
+          this.destroyCharts();
+        }
+      } catch (e) {
+        this.loading = true;
+        this.result = null;
+        this.destroyCharts();
+      }
+    } else {
+      this.loading = true;
+      this.result = null;
+      this.destroyCharts();
+    }
 
     this.http.post<TicketResult>(`${this.API}/internals/tickets`, {
       teamId: this.selectedTeamId,
@@ -414,12 +439,17 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
       next: (data) => {
         this.result = data;
         this.loading = false;
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch (e) {}
         this.cdr.detectChanges();
-        setTimeout(() => this.renderCharts(), 100);
+        setTimeout(() => this.renderCharts(), 50);
       },
       error: (err) => {
+        if (!cached) {
+          this.errorMsg = 'Failed to fetch tickets. ' + (err?.error?.message || err.message || '');
+        }
         this.loading = false;
-        this.errorMsg = 'Failed to fetch tickets. ' + (err?.error?.message || err.message || '');
         this.cdr.detectChanges();
       }
     });
@@ -480,7 +510,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
   renderCharts() {
     if (!this.result) return;
 
-    // Assignee Bar Chart
     const assigneeEl = document.getElementById('intAssigneeChart') as HTMLCanvasElement;
     if (assigneeEl) {
       const entries = Object.entries(this.result.byAssignee).sort((a, b) => b[1] - a[1]).slice(0, 12);
@@ -497,7 +526,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
       });
     }
 
-    // Status Doughnut Chart
     const statusEl = document.getElementById('intStatusChart') as HTMLCanvasElement;
     if (statusEl) {
       const labels = Object.keys(this.result.byStatus);
@@ -514,6 +542,9 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
   exportPdfReport() {
     if (!this.result || !this.result.issues) return;
 
+    this.loading = true;
+    this.cdr.detectChanges();
+
     const exportDate = new Date().toLocaleString('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit'
@@ -526,7 +557,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
     const resolvedCount = this.getStatusCount('Resolved') + this.getStatusCount('Done');
     const activeMembersCount = this.getAssigneeCount();
 
-    // Assignee rows HTML
     const sortedAssignees = Object.entries(this.result.byAssignee || {}).sort((a, b) => b[1] - a[1]);
     let assigneeRowsHtml = '';
     sortedAssignees.forEach(([assignee, count]) => {
@@ -540,7 +570,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
       `;
     });
 
-    // Tickets HTML (top 100)
     let ticketRowsHtml = '';
     const displayTickets = (this.result.issues || []).slice(0, 100);
     displayTickets.forEach((t: any, idx: number) => {
@@ -561,7 +590,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
       `;
     });
 
-    // Container element
     const container = document.createElement('div');
     container.style.position = 'absolute';
     container.style.left = '-9999px';
@@ -574,7 +602,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
 
     container.innerHTML = `
       <div style="background: #ffffff; padding: 10px;">
-        <!-- Header Banner -->
         <div style="background: linear-gradient(135deg, #0c4a6e 0%, #0369a1 50%, #0ea5e9 100%); padding: 20px 25px; border-radius: 12px; color: #ffffff; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
           <div>
             <div style="font-size: 22px; font-weight: 900; letter-spacing: -0.5px;">VERMGUARD <span style="color: #bae6fd;">AI</span></div>
@@ -586,7 +613,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
           </div>
         </div>
 
-        <!-- Metadata Section -->
         <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 16px; margin-bottom: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px;">
           <div><strong>🏛️ Équipe Interne :</strong> <span style="color: #0369a1; font-weight: 800;">${teamName}</span></div>
           <div><strong>👤 Membre / Intervenant :</strong> <span style="color: #0ea5e9; font-weight: 700;">${memberName}</span></div>
@@ -594,7 +620,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
           <div><strong>🔢 Total Incidents :</strong> <span style="color: #c1272d; font-weight: 700;">${totalCount} trouvés dans Jira</span></div>
         </div>
 
-        <!-- Metric KPI Cards -->
         <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;">
           <div style="background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 8px; padding: 12px; text-align: center;">
             <div style="font-size: 22px; font-weight: 800; color: #1e293b;">${totalCount}</div>
@@ -614,7 +639,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
           </div>
         </div>
 
-        <!-- Assignee Breakdown Summary -->
         <div style="margin-bottom: 20px;">
           <h4 style="font-size: 13px; font-weight: 800; color: #0369a1; margin: 0 0 8px 0;">👤 Répartition des Incidents par Membre d'Équipe</h4>
           <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -631,7 +655,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
           </table>
         </div>
 
-        <!-- Detailed Tickets Table -->
         <div>
           <h4 style="font-size: 13px; font-weight: 800; color: #0369a1; margin: 0 0 8px 0;">🎫 Liste des Incidents Jira (${displayTickets.length} affichés)</h4>
           <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
@@ -650,7 +673,6 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
           </table>
         </div>
 
-        <!-- Footer Notice -->
         <div style="margin-top: 25px; padding-top: 10px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
           <div>VermGuard AI Copilot — Internal IT/IS Operations Management</div>
           <div>Page 1 / Document d'Audit Officiel</div>
@@ -660,54 +682,63 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
 
     document.body.appendChild(container);
 
-    Promise.all([
-      import('jspdf'),
-      import('html2canvas')
-    ]).then(([jsPdfModule, html2canvasModule]) => {
-      const jsPDF = jsPdfModule.default || jsPdfModule;
-      const html2canvas = html2canvasModule.default || html2canvasModule;
+    setTimeout(() => {
+      Promise.all([
+        import('jspdf'),
+        import('html2canvas')
+      ]).then(([jsPdfModule, html2canvasModule]) => {
+        const jsPDF = jsPdfModule.default || jsPdfModule;
+        const html2canvas = html2canvasModule.default || html2canvasModule;
 
-      html2canvas(container, { scale: 2, useCORS: true }).then(canvas => {
-        if (document.body.contains(container)) {
-          document.body.removeChild(container);
-        }
+        html2canvas(container, { scale: 1.4, useCORS: true, logging: false }).then(canvas => {
+          if (document.body.contains(container)) {
+            document.body.removeChild(container);
+          }
 
-        const imgData = canvas.toDataURL('image/jpeg', 0.95);
-        const pdf = new jsPDF('p', 'mm', 'a4');
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
+          const imgData = canvas.toDataURL('image/jpeg', 0.88);
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
 
-        const imgWidth = pageWidth;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+          const imgWidth = pageWidth;
+          const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-        let heightLeft = imgHeight;
-        let position = 0;
+          let heightLeft = imgHeight;
+          let position = 0;
 
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-
-        while (heightLeft > 0) {
-          position = heightLeft - imgHeight;
-          pdf.addPage();
           pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
-        }
 
-        const filename = `Rapport_Internal_${this.selectedTeamId}_${this.selectedMember || 'all'}_${this.startDate}_${this.endDate}.pdf`;
-        pdf.save(filename);
+          while (heightLeft > 0) {
+            position = heightLeft - imgHeight;
+            pdf.addPage();
+            pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+            heightLeft -= pageHeight;
+          }
+
+          const safeTeam = (this.getTeamName() || 'Team').replace(/[^a-zA-Z0-9_-]/g, '_');
+          const filename = `Rapport_Interne_${safeTeam}_${this.startDate}_${this.endDate}.pdf`;
+          pdf.save(filename);
+          this.loading = false;
+          this.cdr.detectChanges();
+        }).catch(err => {
+          if (document.body.contains(container)) {
+            document.body.removeChild(container);
+          }
+          console.error('PDF Canvas error:', err);
+          this.loading = false;
+          this.cdr.detectChanges();
+          alert('Erreur lors de la génération du PDF.');
+        });
       }).catch(err => {
         if (document.body.contains(container)) {
           document.body.removeChild(container);
         }
-        console.error('PDF Canvas error:', err);
-        alert('Erreur lors de la génération du PDF.');
+        console.error('PDF Library import error:', err);
+        this.loading = false;
+        this.cdr.detectChanges();
+        alert('Erreur lors du chargement des bibliothèques PDF.');
       });
-    }).catch(err => {
-      if (document.body.contains(container)) {
-        document.body.removeChild(container);
-      }
-      console.error('PDF Library import error:', err);
-      alert('Erreur lors du chargement des bibliothèques PDF.');
-    });
+    }, 50);
   }
 }
