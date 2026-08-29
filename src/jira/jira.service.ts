@@ -41,9 +41,9 @@ export class JiraService implements OnModuleInit {
   /** Indique si Jira est correctement configuré */
   private readonly isConfigured: boolean;
 
-  /** Cache en mémoire pour accélérer l'affichage (TTL: 30 secondes) */
+  /** Cache en mémoire pour accélérer l'affichage (TTL: 60 secondes) */
   private cache: Map<string, { data: TeamTicketsDto; timestamp: number }> = new Map();
-  private readonly CACHE_TTL = 30000;
+  private readonly CACHE_TTL = 60000;
 
   constructor(
     private readonly configService: ConfigService,
@@ -89,7 +89,7 @@ export class JiraService implements OnModuleInit {
 
     setInterval(() => {
       this.refreshCacheInBackground();
-    }, 25000);
+    }, 45000);
   }
 
   /**
