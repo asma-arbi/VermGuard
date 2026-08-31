@@ -137,6 +137,25 @@ interface TicketResult {
             <div class="ticket-count-badge">{{ filteredIssues().length }} tickets</div>
           </div>
 
+          <!-- Status Filter Tabs / Pills -->
+          <div class="status-filter-pills-row" *ngIf="result?.issues?.length">
+            <button class="status-filter-btn" [class.active]="selectedStatusFilter === 'ALL'" (click)="setStatusFilter('ALL')">
+              All ({{ getStatusCount('ALL') }})
+            </button>
+            <button class="status-filter-btn btn-status-resolved" [class.active]="selectedStatusFilter === 'Resolved'" (click)="setStatusFilter('Resolved')">
+              <span class="dot-indicator dot-resolved"></span> Resolved ({{ getStatusCount('Resolved') }})
+            </button>
+            <button class="status-filter-btn btn-status-closed" [class.active]="selectedStatusFilter === 'Closed'" (click)="setStatusFilter('Closed')">
+              <span class="dot-indicator dot-closed"></span> Closed ({{ getStatusCount('Closed') }})
+            </button>
+            <button class="status-filter-btn btn-status-customer" [class.active]="selectedStatusFilter === 'Waiting for Customer'" (click)="setStatusFilter('Waiting for Customer')">
+              <span class="dot-indicator dot-customer"></span> Waiting for Customer ({{ getStatusCount('Waiting for Customer') }})
+            </button>
+            <button class="status-filter-btn btn-status-technical" [class.active]="selectedStatusFilter === 'Waiting Technical Validation'" (click)="setStatusFilter('Waiting Technical Validation')">
+              <span class="dot-indicator dot-technical"></span> Waiting Technical Validation ({{ getStatusCount('Waiting Technical Validation') }})
+            </button>
+          </div>
+
           <!-- Live Table Search -->
           <div class="table-search-bar">
             <span class="search-icon-sm">🔍</span>
@@ -307,11 +326,40 @@ interface TicketResult {
     .assignee-cell { white-space: nowrap; color: #475569; }
     .date-cell { white-space: nowrap; color: #64748b; font-size: 0.8rem; }
 
-    .status-pill { padding: 0.2rem 0.65rem; border-radius: 20px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
-    .status-open { background: #fff7ed; color: #c2410c; }
-    .status-inprogress { background: #eff6ff; color: #1d4ed8; }
-    .status-resolved, .status-done { background: #f0fdf4; color: #166534; }
-    .status-other { background: #f8fafc; color: #475569; }
+    .status-filter-pills-row {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.85rem; align-items: center;
+    }
+    .status-filter-btn {
+      padding: 0.35rem 0.85rem; border-radius: 20px; font-size: 0.8rem; font-weight: 700;
+      border: 1px solid #e2e8f0; background: white; color: #64748b; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 0.45rem; transition: all 0.2s ease;
+    }
+    .status-filter-btn:hover { border-color: #cbd5e1; color: #1e293b; }
+    .status-filter-btn.active {
+      background: #1e293b; color: white; border-color: #1e293b; box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    .btn-status-resolved.active { background: #7c3aed; border-color: #7c3aed; color: white; }
+    .btn-status-closed.active { background: #10b981; border-color: #10b981; color: white; }
+    .btn-status-customer.active { background: #f59e0b; border-color: #f59e0b; color: white; }
+    .btn-status-technical.active { background: #ef4444; border-color: #ef4444; color: white; }
+
+    .dot-indicator { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .dot-resolved { background: #7c3aed; }
+    .dot-closed { background: #10b981; }
+    .dot-customer { background: #f59e0b; }
+    .dot-technical { background: #ef4444; }
+
+    .status-pill {
+      padding: 0.25rem 0.65rem; border-radius: 6px; font-size: 0.72rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.3px; display: inline-flex; align-items: center;
+    }
+    .status-resolved { background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; }
+    .status-closed { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .status-waiting-customer { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .status-waiting-technical { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-open { background: #fef9c3; color: #854d0e; border: 1px solid #fef08a; }
+    .status-inprogress { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .status-other { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
 
     .priority-pill { padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.72rem; font-weight: 700; }
     .priority-critical, .priority-highest { background: #fef2f2; color: #dc2626; }
@@ -344,6 +392,7 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
   errorMsg = '';
   result: TicketResult | null = null;
   tableSearch = '';
+  selectedStatusFilter = 'ALL';
 
   private statusChart: Chart | null = null;
   private assigneeChart: Chart | null = null;
@@ -449,21 +498,46 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
     });
   }
 
-  filteredIssues(): any[] {
-    if (!this.result?.issues) return [];
-    if (!this.tableSearch.trim()) return this.result.issues;
-    const q = this.tableSearch.toLowerCase();
-    return this.result.issues.filter(t =>
-      (t.key || '').toLowerCase().includes(q) ||
-      (t.fields?.summary || '').toLowerCase().includes(q) ||
-      (t.fields?.assignee?.displayName || t.fields?.assignee?.name || '').toLowerCase().includes(q) ||
-      (t.fields?.status?.name || '').toLowerCase().includes(q)
-    );
+  setStatusFilter(status: string) {
+    this.selectedStatusFilter = status;
   }
 
-  getStatusCount(status: string): number {
-    if (!this.result?.byStatus) return 0;
-    return this.result.byStatus[status] || 0;
+  isStatusMatch(statusName: string, category: string): boolean {
+    if (!statusName) return false;
+    const s = statusName.toLowerCase().trim();
+    const c = category.toLowerCase().trim();
+    if (c === 'all') return true;
+    if (c === 'resolved') return s === 'resolved';
+    if (c === 'closed') return s === 'closed';
+    if (c.includes('customer')) return s.includes('customer');
+    if (c.includes('technical') || c.includes('validation')) return s.includes('technical') || s.includes('validation');
+    return s === c;
+  }
+
+  filteredIssues(): any[] {
+    if (!this.result?.issues) return [];
+    let issues = this.result.issues;
+
+    if (this.selectedStatusFilter && this.selectedStatusFilter !== 'ALL') {
+      issues = issues.filter(t => this.isStatusMatch(t.fields?.status?.name, this.selectedStatusFilter));
+    }
+
+    if (this.tableSearch.trim()) {
+      const q = this.tableSearch.toLowerCase();
+      issues = issues.filter(t =>
+        (t.key || '').toLowerCase().includes(q) ||
+        (t.fields?.summary || '').toLowerCase().includes(q) ||
+        (t.fields?.assignee?.displayName || t.fields?.assignee?.name || '').toLowerCase().includes(q) ||
+        (t.fields?.status?.name || '').toLowerCase().includes(q)
+      );
+    }
+    return issues;
+  }
+
+  getStatusCount(category: string): number {
+    if (!this.result?.issues) return 0;
+    if (category === 'ALL') return this.result.issues.length;
+    return this.result.issues.filter(t => this.isStatusMatch(t.fields?.status?.name, category)).length;
   }
 
   getAssigneeCount(): number {
@@ -474,9 +548,12 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
   getStatusClass(status: string): string {
     if (!status) return 'status-other';
     const s = status.toLowerCase();
+    if (s === 'resolved') return 'status-resolved';
+    if (s === 'closed') return 'status-closed';
+    if (s.includes('customer')) return 'status-waiting-customer';
+    if (s.includes('technical') || s.includes('validation')) return 'status-waiting-technical';
     if (s === 'open' || s === 'to do') return 'status-open';
     if (s.includes('progress')) return 'status-inprogress';
-    if (s === 'resolved' || s === 'done' || s === 'closed') return 'status-resolved';
     return 'status-other';
   }
 
@@ -524,10 +601,18 @@ export class InternalTeamsComponent implements OnInit, AfterViewInit {
     if (statusEl) {
       const labels = Object.keys(this.result.byStatus);
       const data = Object.values(this.result.byStatus);
-      const colors = ['#0ea5e9','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#84cc16'];
+      const colors = labels.map(lbl => {
+        const l = lbl.toLowerCase();
+        if (l === 'resolved') return '#7c3aed';
+        if (l === 'closed') return '#10b981';
+        if (l.includes('customer')) return '#f59e0b';
+        if (l.includes('technical') || l.includes('validation')) return '#ef4444';
+        if (l.includes('progress')) return '#0ea5e9';
+        return '#64748b';
+      });
       this.statusChart = new Chart(statusEl, {
         type: 'doughnut',
-        data: { labels, datasets: [{ data, backgroundColor: colors.slice(0, labels.length), borderWidth: 2, borderColor: '#fff' }] },
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 2, borderColor: '#fff' }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { font: { size: 12, weight: 'bold' } } } } }
       });
     }

@@ -536,7 +536,7 @@
           <!-- Breadcrumb Navigation -->
           <div class="slo-breadcrumb">
             <span class="slo-crumb" [class.active]="sloViewerTab === 'orgs'" (click)="sloViewerTab = 'orgs'; selectedOrg = null; selectedSlo = null;">
-              🏢 Organizations
+              📊 Organizations
             </span>
             <span class="slo-crumb-sep" *ngIf="selectedOrg">›</span>
             <span class="slo-crumb" *ngIf="selectedOrg" [class.active]="sloViewerTab === 'slos'" (click)="sloViewerTab = 'slos'; selectedSlo = null;">
@@ -550,27 +550,64 @@
 
           <!-- ── TAB: ORGANIZATIONS ── -->
           <div *ngIf="sloViewerTab === 'orgs'" class="slo-tab-content">
-            <div *ngIf="dbOrgsLoading" class="slo-loading">
+
+            <!-- ── Sélecteur de période ── -->
+            <div class="overview-range-bar">
+              <div class="range-presets">
+                <button class="range-btn" [class.active]="overviewPreset === '7d'"   (click)="setOverviewPreset('7d')">7 jours</button>
+                <button class="range-btn" [class.active]="overviewPreset === '30d'"  (click)="setOverviewPreset('30d')">30 jours</button>
+                <button class="range-btn" [class.active]="overviewPreset === '90d'"  (click)="setOverviewPreset('90d')">90 jours</button>
+                <button class="range-btn" [class.active]="overviewPreset === '6m'"   (click)="setOverviewPreset('6m')">6 mois</button>
+                <button class="range-btn" [class.active]="overviewPreset === 'custom'" (click)="setOverviewPreset('custom')">📅 Personnalisé</button>
+              </div>
+              <div class="range-custom" *ngIf="overviewShowCustomPicker">
+                <input type="date" [(ngModel)]="overviewCustomFrom" class="range-date-input" />
+                <span class="range-to">→</span>
+                <input type="date" [(ngModel)]="overviewCustomTo" class="range-date-input" />
+                <button class="slo-refresh-btn" (click)="applyCustomOverviewRange()">Appliquer</button>
+              </div>
+              <div class="range-info" *ngIf="orgOverviewDateRange">
+                <span class="slo-date-range">📅 {{ orgOverviewDateRange }}</span>
+                <span class="slo-refresh-label" *ngIf="orgOverviewLastRefreshed">
+                  🔄 {{ orgOverviewLastRefreshed | date:'dd/MM/yyyy HH:mm' }}
+                </span>
+                <button class="slo-refresh-btn" (click)="loadDbOrganizations()" [disabled]="orgOverviewLoading">
+                  <span *ngIf="!orgOverviewLoading">↻</span>
+                  <span *ngIf="orgOverviewLoading">⏳</span>
+                </button>
+              </div>
+            </div>
+
+            <div *ngIf="orgOverviewLoading && orgOverview.length === 0" class="slo-loading">
               <div class="slo-spinner"></div>
-              <p>Loading organizations...</p>
+              <p>Récupération des uptimes Datadog...</p>
             </div>
             <div *ngIf="dbOrgsError" class="slo-error-box">⚠️ {{ dbOrgsError }}</div>
 
-            <div class="slo-section-bar" *ngIf="!dbOrgsLoading && dbOrganizations.length > 0" style="margin-bottom: 1.25rem;">
-              <h3>Organizations ({{ dbOrganizations.length }})</h3>
-              <span class="slo-count-badge">Click an organization to view Datadog SLOs</span>
+            <div class="slo-section-bar" *ngIf="orgOverview.length > 0" style="margin-bottom: 1rem;">
+              <h3>Organisations ({{ orgOverview.length }})</h3>
+              <div class="legend-row">
+                <span class="legend-dot green"></span><span>≥ 99.9%</span>
+                <span class="legend-dot red" style="margin-left:1rem;"></span><span>&lt; 99.9%</span>
+              </div>
             </div>
 
-            <div class="slo-org-grid" *ngIf="!dbOrgsLoading && !dbOrgsError">
-              <div *ngIf="dbOrganizations.length === 0" class="slo-empty">
-                <span>🏢</span>
-                <p>No organizations found in database.</p>
+            <div class="slo-org-grid" *ngIf="!dbOrgsError">
+              <div *ngIf="orgOverview.length === 0 && !orgOverviewLoading" class="slo-empty">
+                <span>📊</span><p>Aucune organisation trouvée.</p>
               </div>
-              <div class="slo-org-card" *ngFor="let org of dbOrganizations" (click)="selectOrgForSlos(org)">
-                <div class="slo-org-icon">🏢</div>
+              <div class="slo-org-card" *ngFor="let ov of orgOverview"
+                   (click)="selectOrgForSlos({orgId: ov.orgId, orgName: ov.orgName})"
+                   [class.org-card-breached]="ov.state === 'breached'">
+                <div class="slo-org-uptime-badge" [ngClass]="getOrgUptimeBadgeClass(ov.uptime)">
+                  <span class="uptime-val">{{ ov.displayUptime }}</span>
+                  <span class="uptime-label">Uptime</span>
+                </div>
                 <div class="slo-org-info">
-                  <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); margin: 0;">{{ org.orgName }}</h3>
-                  <p style="font-size: 0.8rem; color: var(--brand-primary); font-weight: 600; margin-top: 0.25rem;">Client Infrastructure & SLOs</p>
+                  <h3 style="font-size:1.1rem;font-weight:800;color:var(--text-dark);margin:0;">{{ ov.orgName }}</h3>
+                  <p style="font-size:0.75rem;color:var(--text-muted);margin:0.15rem 0 0;">
+                    {{ ov.sloCount > 0 ? ov.sloName : 'Aucun SLO configuré' }}
+                  </p>
                 </div>
                 <div class="slo-org-arrow">›</div>
               </div>
@@ -1064,7 +1101,7 @@
       <!-- Breadcrumb Navigation -->
       <div class="slo-breadcrumb">
         <span class="slo-crumb" [class.active]="sloViewerTab === 'orgs'" (click)="sloViewerTab = 'orgs'; selectedOrg = null; selectedSlo = null;">
-          🏢 Organizations
+          📊 Organizations
         </span>
         <span class="slo-crumb-sep" *ngIf="selectedOrg">›</span>
         <span class="slo-crumb" *ngIf="selectedOrg" [class.active]="sloViewerTab === 'slos'" (click)="sloViewerTab = 'slos'; selectedSlo = null;">
@@ -1078,32 +1115,71 @@
 
       <!-- ── TAB: ORGANIZATIONS ── -->
       <div *ngIf="sloViewerTab === 'orgs'" class="slo-tab-content">
-        <div *ngIf="dbOrgsLoading" class="slo-loading">
+
+        <!-- ── Sélecteur de période ── -->
+        <div class="overview-range-bar">
+          <div class="range-presets">
+            <button class="range-btn" [class.active]="overviewPreset === '7d'"   (click)="setOverviewPreset('7d')">7 jours</button>
+            <button class="range-btn" [class.active]="overviewPreset === '30d'"  (click)="setOverviewPreset('30d')">30 jours</button>
+            <button class="range-btn" [class.active]="overviewPreset === '90d'"  (click)="setOverviewPreset('90d')">90 jours</button>
+            <button class="range-btn" [class.active]="overviewPreset === '6m'"   (click)="setOverviewPreset('6m')">6 mois</button>
+            <button class="range-btn" [class.active]="overviewPreset === 'custom'" (click)="setOverviewPreset('custom')">📅 Personnalisé</button>
+          </div>
+          <div class="range-custom" *ngIf="overviewShowCustomPicker">
+            <input type="date" [(ngModel)]="overviewCustomFrom" class="range-date-input" />
+            <span class="range-to">→</span>
+            <input type="date" [(ngModel)]="overviewCustomTo" class="range-date-input" />
+            <button class="slo-refresh-btn" (click)="applyCustomOverviewRange()">Appliquer</button>
+          </div>
+          <div class="range-info" *ngIf="orgOverviewDateRange">
+            <span class="slo-date-range">📅 {{ orgOverviewDateRange }}</span>
+            <span class="slo-refresh-label" *ngIf="orgOverviewLastRefreshed">
+              🔄 {{ orgOverviewLastRefreshed | date:'dd/MM/yyyy HH:mm' }}
+            </span>
+            <button class="slo-refresh-btn" (click)="loadDbOrganizations()" [disabled]="orgOverviewLoading">
+              <span *ngIf="!orgOverviewLoading">↻</span>
+              <span *ngIf="orgOverviewLoading">⏳</span>
+            </button>
+          </div>
+        </div>
+
+        <div *ngIf="orgOverviewLoading && orgOverview.length === 0" class="slo-loading">
           <div class="slo-spinner"></div>
-          <p>Loading organizations...</p>
+          <p>Récupération des uptimes Datadog...</p>
         </div>
         <div *ngIf="dbOrgsError" class="slo-error-box">⚠️ {{ dbOrgsError }}</div>
 
-        <div class="slo-section-bar" *ngIf="!dbOrgsLoading && dbOrganizations.length > 0" style="margin-bottom: 1.25rem;">
-          <h3>Organizations ({{ dbOrganizations.length }})</h3>
-          <span class="slo-count-badge">Click an organization to view SLOs</span>
+        <div class="slo-section-bar" *ngIf="orgOverview.length > 0" style="margin-bottom: 1rem;">
+          <h3>Organisations ({{ orgOverview.length }})</h3>
+          <div class="legend-row">
+            <span class="legend-dot green"></span><span>≥ 99.9%</span>
+            <span class="legend-dot red" style="margin-left:1rem;"></span><span>&lt; 99.9%</span>
+          </div>
         </div>
 
-        <div class="slo-org-grid" *ngIf="!dbOrgsLoading && !dbOrgsError">
-          <div *ngIf="dbOrganizations.length === 0" class="slo-empty">
-            <span>🏢</span>
-            <p>No organizations found in database.</p>
+        <div class="slo-org-grid" *ngIf="!dbOrgsError">
+          <div *ngIf="orgOverview.length === 0 && !orgOverviewLoading" class="slo-empty">
+            <span>📊</span><p>Aucune organisation trouvée.</p>
           </div>
-          <div class="slo-org-card" *ngFor="let org of dbOrganizations" (click)="selectOrgForSlos(org)">
-            <div class="slo-org-icon">🏢</div>
+          <div class="slo-org-card" *ngFor="let ov of orgOverview"
+               (click)="selectOrgForSlos({orgId: ov.orgId, orgName: ov.orgName})"
+               [class.org-card-breached]="ov.state === 'breached'">
+            <div class="slo-org-uptime-badge" [ngClass]="getOrgUptimeBadgeClass(ov.uptime)">
+              <span class="uptime-val">{{ ov.displayUptime }}</span>
+              <span class="uptime-label">Uptime</span>
+            </div>
             <div class="slo-org-info">
-              <h3 style="font-size: 1.15rem; font-weight: 800; color: var(--text-dark); margin: 0;">{{ org.orgName }}</h3>
-              <p style="font-size: 0.8rem; color: var(--brand-primary); font-weight: 600; margin-top: 0.25rem;">Client Infrastructure & SLOs</p>
+              <h3 style="font-size:1.1rem;font-weight:800;color:var(--text-dark);margin:0;">{{ ov.orgName }}</h3>
+              <p style="font-size:0.75rem;color:var(--text-muted);margin:0.15rem 0 0;">
+                {{ ov.sloCount > 0 ? ov.sloName : 'Aucun SLO configuré' }}
+              </p>
             </div>
             <div class="slo-org-arrow">›</div>
           </div>
         </div>
       </div>
+
+
 
       <!-- ── TAB: SLO LIST ── -->
       <div *ngIf="sloViewerTab === 'slos'" class="slo-tab-content">

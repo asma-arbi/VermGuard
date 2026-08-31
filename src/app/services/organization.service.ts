@@ -7,6 +7,7 @@ export interface Organization {
   orgName: string;
   apiKey?: string;
   appKey?: string;
+  lastMonthUptime?: number;
 }
 
 export interface SloItem {
@@ -85,6 +86,30 @@ export class OrganizationService {
 
   getOrganizations(): Observable<Organization[]> {
     return this.http.get<Organization[]>(this.apiUrl, { headers: this.getHeaders() });
+  }
+
+  getLiveSlosOverview(fromTs?: number, toTs?: number): Observable<{
+    fromTs: number;
+    toTs: number;
+    startDate: string;
+    endDate: string;
+    lastRefreshed: string;
+    organizations: Array<{
+      orgId: number | string;
+      orgName: string;
+      sloCount: number;
+      sloName: string;
+      sloId?: string;
+      uptime: number;
+      displayUptime: string;
+      state: 'ok' | 'breached';
+      targetThreshold: number;
+    }>;
+  }> {
+    let params = new HttpParams();
+    if (fromTs) params = params.set('fromTs', fromTs.toString());
+    if (toTs) params = params.set('toTs', toTs.toString());
+    return this.http.get<any>(`${this.apiUrl}/live-slos-overview`, { headers: this.getHeaders(), params });
   }
 
   getSlos(orgId: number | string): Observable<SloListResponse> {

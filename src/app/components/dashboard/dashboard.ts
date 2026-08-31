@@ -93,11 +93,35 @@ export class DashboardComponent implements OnInit, OnDestroy {
   sloHistoryError = '';
   sloViewerTab: 'orgs' | 'slos' | 'history' = 'orgs';
 
+  // Live SLO Overview — vrais uptimes Datadog
+  orgOverview: Array<{
+    orgId: number | string;
+    orgName: string;
+    sloCount: number;
+    sloName: string;
+    sloId?: string;
+    hasProdLink?: boolean;
+    uptime: number;
+    displayUptime: string;
+    state: 'ok' | 'breached';
+    targetThreshold: number;
+  }> = [];
+  orgOverviewLoading = false;
+  orgOverviewLastRefreshed = '';
+  orgOverviewDateRange = '';
+
+  // Date range picker for the overview
+  overviewPreset: '7d' | '30d' | '90d' | '6m' | 'custom' = '30d';
+  overviewCustomFrom = '';  // YYYY-MM-DD
+  overviewCustomTo   = '';  // YYYY-MM-DD
+  overviewShowCustomPicker = false;
+
   // SLO History Date Range Filter
   sloHistoryStartDate = ''; // YYYY-MM-DD
   sloHistoryEndDate = '';   // YYYY-MM-DD
   sloHistoryPreset: '7d' | '30d' | '90d' | 'custom' = '30d';
-  
+
+
   // Notifications Pop-up Globales
   globalNotifications: Array<{ id: number; key: string; message: string }> = [];
   private nextNotificationId = 0;
@@ -1496,39 +1520,137 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   loadDbOrganizations() {
-    this.dbOrgsLoading = true;
     this.dbOrgsError = '';
-    this.orgService.getOrganizations().subscribe({
-      next: (data) => {
-        this.dbOrganizations = data;
+
+    // Compute timestamps from current preset/custom range
+    const { fromTs, toTs } = this.resolveOverviewRange();
+    const cacheKey = `vermeg_live_overview_${fromTs}_${toTs}`;
+
+    // ── Affichage immédiat depuis le cache localStorage ──
+    const cachedStr = localStorage.getItem(cacheKey);
+    if (cachedStr) {
+      try {
+        const cached = JSON.parse(cachedStr);
+        this.orgOverview = cached.organizations || [];
+        this.orgOverviewLastRefreshed = cached.lastRefreshed || '';
+        this.orgOverviewDateRange = `${cached.startDate} → ${cached.endDate}`;
+        this.dbOrganizations = (cached.organizations || []).map((o: any) => ({
+          orgId: o.orgId, orgName: o.orgName, lastMonthUptime: o.uptime,
+        }));
         this.dbOrgsLoading = false;
+        this.orgOverviewLoading = false;
+        this.cdr.detectChanges();
+      } catch {
+        this.orgOverviewLoading = true;
+        this.dbOrgsLoading = true;
+      }
+    } else {
+      this.orgOverviewLoading = true;
+      this.dbOrgsLoading = true;
+    }
+
+    // ── Fetch depuis le backend (Datadog en arrière-plan) ──
+    this.orgService.getLiveSlosOverview(fromTs, toTs).subscribe({
+      next: (resp) => {
+        this.orgOverview = resp.organizations || [];
+        this.orgOverviewLastRefreshed = resp.lastRefreshed;
+        this.orgOverviewDateRange = `${resp.startDate} → ${resp.endDate}`;
+        this.dbOrganizations = (resp.organizations || []).map((o: any) => ({
+          orgId: o.orgId, orgName: o.orgName, lastMonthUptime: o.uptime,
+        }));
+        this.dbOrgsLoading = false;
+        this.orgOverviewLoading = false;
+        try { localStorage.setItem(cacheKey, JSON.stringify(resp)); } catch {}
         this.cdr.detectChanges();
       },
       error: () => {
-        this.dbOrgsError = 'Failed to load organizations from database.';
+        if (!cachedStr) this.dbOrgsError = 'Impossible de charger les uptimes depuis Datadog.';
         this.dbOrgsLoading = false;
+        this.orgOverviewLoading = false;
         this.cdr.detectChanges();
       }
     });
   }
 
+  /** Compute {fromTs, toTs} based on selected preset or custom dates */
+  private resolveOverviewRange(): { fromTs: number; toTs: number } {
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (this.overviewPreset === 'custom' && this.overviewCustomFrom && this.overviewCustomTo) {
+      return {
+        fromTs: Math.floor(new Date(this.overviewCustomFrom).getTime() / 1000),
+        toTs:   Math.floor(new Date(this.overviewCustomTo + 'T23:59:59').getTime() / 1000),
+      };
+    }
+    const days = this.overviewPreset === '7d' ? 7 : this.overviewPreset === '90d' ? 90 : this.overviewPreset === '6m' ? 180 : 30;
+    return { fromTs: nowSec - days * 86400, toTs: nowSec };
+  }
+
+  /** Change preset and reload */
+  setOverviewPreset(preset: '7d' | '30d' | '90d' | '6m' | 'custom') {
+    this.overviewPreset = preset;
+    this.overviewShowCustomPicker = preset === 'custom';
+    // Clear caches so fresh data is fetched
+    Object.keys(localStorage).filter(k => k.startsWith('vermeg_live_overview_')).forEach(k => localStorage.removeItem(k));
+    if (preset !== 'custom') this.loadDbOrganizations();
+  }
+
+  /** Trigger custom date range fetch */
+  applyCustomOverviewRange() {
+    if (this.overviewCustomFrom && this.overviewCustomTo) {
+      Object.keys(localStorage).filter(k => k.startsWith('vermeg_live_overview_')).forEach(k => localStorage.removeItem(k));
+      this.loadDbOrganizations();
+    }
+  }
+
+  getOrgLastMonthUptime(org: Organization): number {
+    if (!org) return 100;
+    if (typeof org.lastMonthUptime === 'number') return org.lastMonthUptime;
+    return 100;
+  }
+
+  /** Green ≥99.9% / Red <99.9% */
+  getOrgUptimeBadgeClass(uptime: number): string {
+    return uptime >= 99.9 ? 'org-uptime-excellent' : 'org-uptime-poor';
+  }
+
+
   selectOrgForSlos(org: Organization) {
     this.selectedOrg = org;
     this.selectedSlo = null;
     this.sloHistory = null;
-    this.orgSlos = [];
-    this.orgSlosLoading = true;
-    this.orgSlosError = '';
     this.sloViewerTab = 'slos';
+    this.orgSlosError = '';
+
+    // Fast Cache 0ms pour ouverture instantanée
+    const cacheKey = 'vermeg_org_slos_' + org.orgId;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        this.orgSlos = parsed.slos || [];
+        this.orgSlosLoading = false;
+      } catch (e) {
+        this.orgSlos = [];
+        this.orgSlosLoading = true;
+      }
+    } else {
+      this.orgSlos = [];
+      this.orgSlosLoading = true;
+    }
 
     this.orgService.getSlos(org.orgId).subscribe({
       next: (resp) => {
-        this.orgSlos = resp.slos;
+        this.orgSlos = resp.slos || [];
         this.orgSlosLoading = false;
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(resp));
+        } catch (e) {}
         this.cdr.detectChanges();
       },
       error: (err) => {
-        this.orgSlosError = err?.error?.message || 'Failed to fetch SLOs from Datadog.';
+        if (!cached) {
+          this.orgSlosError = err?.error?.message || 'Failed to fetch SLOs from Datadog.';
+        }
         this.orgSlosLoading = false;
         this.cdr.detectChanges();
       }

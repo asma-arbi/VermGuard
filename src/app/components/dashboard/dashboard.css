@@ -1122,12 +1122,191 @@
   transform: translateY(-2px);
 }
 .slo-org-icon { font-size: 1.8rem; }
+.slo-org-uptime-badge {
+  min-width: 68px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.slo-org-uptime-badge .uptime-val {
+  font-size: 1.12rem;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+.slo-org-uptime-badge .uptime-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+}
+/* Green ≥99.9%, Red <99.9% */
+.org-uptime-excellent {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1.5px solid #6ee7b7;
+}
+.org-uptime-poor {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1.5px solid #fca5a5;
+}
+/* Remove intermediate amber — only green/red */
+.org-uptime-good {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1.5px solid #6ee7b7;
+}
+
+/* ── Breached org card border highlight ── */
+.org-card-breached {
+  border-color: #fca5a5 !important;
+  background: #fff8f8 !important;
+}
+
+/* ── Overview range bar ── */
+.overview-range-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+  padding: 0.75rem 1rem;
+  background: #f8f4ff;
+  border: 1.5px solid #e0d5f5;
+  border-radius: 12px;
+}
+.range-presets {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.range-btn {
+  padding: 0.32rem 0.85rem;
+  border: 1.5px solid #d1d5db;
+  border-radius: 20px;
+  background: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.range-btn:hover { border-color: #7c3aed; color: #7c3aed; }
+.range-btn.active {
+  background: var(--brand-gradient, linear-gradient(135deg,#7c3aed,#9d174d));
+  color: white;
+  border-color: transparent;
+}
+.range-custom {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.range-date-input {
+  border: 1.5px solid #d1d5db;
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.82rem;
+  color: #374151;
+  outline: none;
+}
+.range-date-input:focus { border-color: #7c3aed; }
+.range-to { font-weight: 700; color: #6b7280; }
+.range-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  flex-wrap: wrap;
+}
+
+/* ── Legend dots ── */
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.legend-dot.green { background: #10b981; }
+.legend-dot.red   { background: #ef4444; }
+
+
 .slo-org-info { flex: 1; }
 .slo-org-info h3 { font-size: 1rem; font-weight: 700; color: var(--text-dark); margin: 0; }
 .slo-org-info p  { font-size: 0.8rem; color: var(--text-muted); margin: 0.2rem 0 0; }
 .slo-org-arrow { font-size: 1.4rem; color: var(--brand-primary); font-weight: 700; }
 
-/* ── SLO List ── */
+/* ── Overview Meta Bar ── */
+.slo-overview-meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 1rem;
+  background: #f8f4ff;
+  border: 1.5px solid #e0d5f5;
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+.slo-date-range {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #5a1090;
+}
+.slo-refresh-label {
+  font-size: 0.78rem;
+  color: #6b7280;
+  font-weight: 500;
+  flex: 1;
+}
+.slo-refresh-btn {
+  background: var(--brand-gradient, linear-gradient(135deg,#7c3aed,#9d174d));
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.slo-refresh-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.slo-refresh-btn:not(:disabled):hover { opacity: 0.88; }
+
+/* ── Breached org card ── */
+.org-card-breached {
+  border-color: #fca5a5 !important;
+  background: #fff5f5 !important;
+}
+.org-breached-tag {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #991b1b;
+  background: #fee2e2;
+  border-radius: 6px;
+  padding: 0.1rem 0.45rem;
+  letter-spacing: 0.3px;
+}
+
+
 .slo-list { display: flex; flex-direction: column; gap: 0.75rem; }
 
 .slo-row {
