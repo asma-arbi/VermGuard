@@ -2,25 +2,64 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Organization } from './entities/organization.entity';
+import { Downtime } from './entities/downtime.entity';
 import { DowntimeExclusion } from './entities/downtime-exclusion.entity';
 import axios from 'axios';
 
 @Injectable()
 export class OrganizationService {
   private readonly logger = new Logger(OrganizationService.name);
+  // In-memory cache: key = "fromTs-toTs", value = {data, ts}
+  private readonly overviewCache = new Map<string, { data: any; ts: number }>();
+  private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     @InjectRepository(Organization)
     private readonly orgRepository: Repository<Organization>,
+    @InjectRepository(Downtime)
+    private readonly downtimeRepository: Repository<Downtime>,
     @InjectRepository(DowntimeExclusion)
     private readonly exclusionRepository: Repository<DowntimeExclusion>,
   ) {}
 
-  async findAll(): Promise<Organization[]> {
+  async findAll(): Promise<any[]> {
     try {
-      const orgs = await this.orgRepository.find();
+      const [orgs, downtimes] = await Promise.all([
+        this.orgRepository.find(),
+        this.downtimeRepository.find(),
+      ]);
+
+      const now = new Date();
+      const prevMonthYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+      const prevMonthIndex = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+      const startOfPrevMonth = new Date(prevMonthYear, prevMonthIndex, 1, 0, 0, 0, 0);
+      const endOfPrevMonth = new Date(prevMonthYear, prevMonthIndex + 1, 0, 23, 59, 59, 999);
+      const daysInMonth = endOfPrevMonth.getDate();
+      const totalMinutesInMonth = daysInMonth * 24 * 60; // 44640 mins for 31-day month
+
       return orgs
         .filter(o => o.orgName && o.orgName.trim() !== '')
+        .map(org => {
+          const orgNameLower = org.orgName.trim().toLowerCase();
+          let dtMinutes = 0;
+          downtimes.forEach(dt => {
+            const dtOrg = (dt.organizationName || (dt as any).organization || '').trim().toLowerCase();
+            if (dtOrg && (dtOrg === orgNameLower || orgNameLower.includes(dtOrg) || dtOrg.includes(orgNameLower))) {
+              const st = new Date(dt.startTime);
+              if (st >= startOfPrevMonth && st <= endOfPrevMonth) {
+                dtMinutes += Number(dt.duration) || 0;
+              }
+            }
+          });
+
+          const uptime = Math.max(0, ((totalMinutesInMonth - dtMinutes) / totalMinutesInMonth) * 100);
+          const roundedUptime = Math.round(uptime);
+
+          return {
+            ...org,
+            lastMonthUptime: roundedUptime,
+          };
+        })
         .sort((a, b) => a.orgName.localeCompare(b.orgName));
     } catch (err: any) {
       this.logger.error(`Failed to fetch organizations: ${err.message}`);
@@ -28,11 +67,137 @@ export class OrganizationService {
     }
   }
 
+  async getLiveSlosOverview(customFromTs?: number, customToTs?: number): Promise<any> {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const toTs = customToTs && !isNaN(customToTs) ? Number(customToTs) : nowSec;
+    const fromTs = customFromTs && !isNaN(customFromTs) ? Number(customFromTs) : (toTs - 30 * 24 * 3600);
+
+    // ── In-memory cache (5 min TTL per time range) ──
+    const cacheKey = `${Math.floor(fromTs / 300)}-${Math.floor(toTs / 300)}`;
+    const cached = this.overviewCache.get(cacheKey);
+    if (cached && (Date.now() - cached.ts) < this.CACHE_TTL_MS) {
+      this.logger.log(`[Overview] Cache HIT (${cacheKey})`);
+      return cached.data;
+    }
+
+    const startDateStr = new Date(fromTs * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const endDateStr   = new Date(toTs  * 1000).toISOString().replace('T', ' ').slice(0, 19);
+
+    const orgs = await this.orgRepository.find();
+    const activeOrgs = orgs.filter(o => o.orgName && o.orgName.trim() !== '');
+
+    // ── Fetch all SLO lists in parallel first ──
+    const sloListsMap = new Map<number | string, any[]>();
+    await Promise.all(activeOrgs.map(async (org) => {
+      try {
+        const resp = await this.getSlos(org.orgId);
+        sloListsMap.set(org.orgId, resp.slos || []);
+      } catch {
+        sloListsMap.set(org.orgId, []);
+      }
+    }));
+
+    // ── For each org, pick the PROD SLO and get its sli_value directly ──
+    const results = await Promise.all(
+      activeOrgs.map(async (org) => {
+        const sloList = sloListsMap.get(org.orgId) || [];
+
+        // No SLOs configured → 100% green
+        if (sloList.length === 0) {
+          return this.buildOrgResult(org, sloList, null, 100.0);
+        }
+
+        // Priority: SLO whose URL or name contains "prod"
+        const prodSlo = sloList.find(s =>
+          (s.targetUrl && s.targetUrl.toLowerCase().includes('prod')) ||
+          (s.targetUrls && s.targetUrls.some((u: string) => u.toLowerCase().includes('prod'))) ||
+          (s.name && s.name.toUpperCase().includes('PROD'))
+        ) ?? sloList[0];
+
+        const sliValue = await this.getQuickSliValue(org, prodSlo.id, fromTs, toTs);
+        return this.buildOrgResult(org, sloList, prodSlo, sliValue);
+      })
+    );
+
+    const payload = {
+      fromTs,
+      toTs,
+      startDate: startDateStr,
+      endDate: endDateStr,
+      lastRefreshed: new Date().toISOString(),
+      organizations: results.sort((a, b) => a.orgName.localeCompare(b.orgName)),
+    };
+
+    this.overviewCache.set(cacheKey, { data: payload, ts: Date.now() });
+    return payload;
+  }
+
+  // ── Lightweight: fetch ONLY sli_value from Datadog (no heavy processing) ──
+  private async getQuickSliValue(org: any, sloId: string, fromTs: number, toTs: number): Promise<number> {
+    const headers = {
+      'DD-API-KEY': org.apiKey,
+      'DD-APPLICATION-KEY': org.appKey,
+      'Content-Type': 'application/json',
+    };
+
+    for (const baseUrl of this.getDatadogBaseUrls()) {
+      try {
+        const res = await axios.get(`${baseUrl}/api/v1/slo/${sloId}/history`, {
+          headers,
+          params: { from_ts: fromTs, to_ts: toTs },
+          timeout: 8000,
+        });
+        const overall = res.data?.data?.overall || {};
+        const sliValue = overall.sli_value ?? overall.uptime ?? 100.0;
+        const v = parseFloat(sliValue);
+        if (!isNaN(v)) return Math.max(0, Math.min(100, v));
+        return 100.0;
+      } catch (err: any) {
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) continue; // try next region
+        // other error → stop
+        break;
+      }
+    }
+    return 100.0; // fallback if all regions fail
+  }
+
+  // ── Format one org result ──
+  private buildOrgResult(org: any, sloList: any[], slo: any | null, uptime: number): any {
+    const clamped = Math.max(0, Math.min(100, uptime));
+    // Green ≥99.9%, Red otherwise
+    const state = clamped >= 99.9 ? 'ok' : 'breached';
+
+    let displayUptime: string;
+    if (clamped >= 99.95) {
+      displayUptime = '100%';
+    } else {
+      // 1 decimal if not round
+      const oneDec = (Math.round(clamped * 10) / 10).toFixed(1);
+      displayUptime = oneDec.endsWith('.0') ? `${Math.round(clamped)}%` : `${oneDec}%`;
+    }
+
+    return {
+      orgId: org.orgId,
+      orgName: org.orgName,
+      sloCount: sloList.length,
+      sloName: slo?.name ?? `${org.orgName} SLO`,
+      sloId: slo?.id ?? null,
+      hasProdLink: slo?.targetUrl?.toLowerCase().includes('prod') ||
+                   slo?.targetUrls?.some((u: string) => u.toLowerCase().includes('prod')) || false,
+      uptime: parseFloat(clamped.toFixed(2)),
+      displayUptime,
+      state,
+      targetThreshold: slo?.targetThreshold ?? 99.9,
+    };
+  }
+
   async findOne(orgId: number | string): Promise<Organization> {
     const org = await this.orgRepository.findOneBy({ orgId: orgId as any });
     if (!org) throw new NotFoundException(`Organization ${orgId} not found`);
     return org;
   }
+
 
   private getDatadogBaseUrls(): string[] {
     return [
