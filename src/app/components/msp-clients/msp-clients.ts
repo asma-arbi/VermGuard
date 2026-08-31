@@ -544,8 +544,9 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
   exportPdfReport() {
     if (!this.result || !this.result.issues) return;
 
-    this.loading = true;
-    this.cdr.detectChanges();
+    // Ne PAS utiliser loading=true: cela détruit les canvas Chart.js
+    const btnPdf = document.querySelector('.btn-export-pdf') as HTMLElement;
+    if (btnPdf) { btnPdf.style.opacity = '0.5'; btnPdf.style.pointerEvents = 'none'; }
 
     const exportDate = new Date().toLocaleString('fr-FR', {
       day: '2-digit', month: '2-digit', year: 'numeric',
@@ -730,15 +731,18 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
           const safeClient = (this.getClientName() || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
           const filename = `Rapport_MSP_${safeClient}_${this.startDate}_${this.endDate}.pdf`;
           pdf.save(filename);
-          this.loading = false;
-          this.cdr.detectChanges();
+          // Re-enable button + re-render charts so they stay visible
+          if (btnPdf) { btnPdf.style.opacity = ''; btnPdf.style.pointerEvents = ''; }
+          this.destroyCharts();
+          setTimeout(() => this.renderCharts(), 60);
         }).catch(err => {
           if (document.body.contains(container)) {
             document.body.removeChild(container);
           }
           console.error('PDF Canvas error:', err);
-          this.loading = false;
-          this.cdr.detectChanges();
+          if (btnPdf) { btnPdf.style.opacity = ''; btnPdf.style.pointerEvents = ''; }
+          this.destroyCharts();
+          setTimeout(() => this.renderCharts(), 60);
           alert('Erreur lors de la génération du PDF.');
         });
       }).catch(err => {
@@ -746,8 +750,7 @@ export class MspClientsComponent implements OnInit, AfterViewInit {
           document.body.removeChild(container);
         }
         console.error('PDF Library import error:', err);
-        this.loading = false;
-        this.cdr.detectChanges();
+        if (btnPdf) { btnPdf.style.opacity = ''; btnPdf.style.pointerEvents = ''; }
         alert('Erreur lors du chargement des bibliothèques PDF.');
       });
     }, 50);
