@@ -436,38 +436,54 @@ export class EvaluationSocViewComponent implements OnInit, DoCheck {
   private CACHE_KEY = 'vermguard_eval_my_cache';
 
   loadMyEvaluations() {
-    this.loading = true;
-    const storedUser = localStorage.getItem('loggedUser');
     let loggedUserId = 0;
+    const storedUser = localStorage.getItem('loggedUser');
     if (storedUser) {
       try {
         const u = JSON.parse(storedUser);
-        if (u.id) loggedUserId = u.id;
+        if (u.id) {
+          loggedUserId = u.id;
+        } else if (u.email) {
+          const usersCache = localStorage.getItem('vermeg_users_cache');
+          if (usersCache) {
+            const allUsers = JSON.parse(usersCache);
+            const found = allUsers.find((usr: any) => usr.email.toLowerCase() === u.email.toLowerCase());
+            if (found && found.id) loggedUserId = found.id;
+          }
+        }
       } catch {}
     }
 
-    // Attempt instant display from cache if present
-    const cached = localStorage.getItem(this.CACHE_KEY + '_' + loggedUserId);
-    if (cached) {
+    // Instant 0ms cache: show cached evaluations (or empty state) immediately without blocking spinner
+    const cacheKey = this.CACHE_KEY + '_' + loggedUserId;
+    const cached = localStorage.getItem(cacheKey);
+    let hasInstantData = false;
+
+    if (cached !== null) {
       try {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           this.evaluations = parsed;
           this.loading = false;
+          hasInstantData = true;
         }
       } catch (e) {}
     }
 
-    // Always fetch fresh evaluations from HTTP backend
+    if (!hasInstantData) {
+      // Default to empty state immediately so user sees the interface in 0ms without waiting on a blocking spinner
+      this.evaluations = [];
+      this.loading = false;
+    }
+
+    // Always fetch fresh evaluations from HTTP backend in background
     this.evalService.getMyEvaluations(loggedUserId, 'soc').subscribe({
       next: (data) => {
         this.ngZone.run(() => {
           this.evaluations = data || [];
-          if (this.evaluations.length > 0) {
-            localStorage.setItem(this.CACHE_KEY + '_' + loggedUserId, JSON.stringify(this.evaluations));
-          } else {
-            localStorage.removeItem(this.CACHE_KEY + '_' + loggedUserId);
-          }
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(this.evaluations));
+          } catch (e) {}
           this.loading = false;
           this.cdr.detectChanges();
         });
