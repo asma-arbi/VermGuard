@@ -957,6 +957,7 @@ export class EvaluationManagerComponent implements OnInit {
       this.selectedPeriod = this.availablePeriods[0];
     }
     this.loadTeamEvaluations();
+    this.preloadRecentPeriods();
 
     // Listen to real-time evaluation updates
     this.socketService.onEvaluationUpdated().subscribe((data) => {
@@ -1310,6 +1311,8 @@ export class EvaluationManagerComponent implements OnInit {
     const cacheKey = 'vermeg_evals_cache_manager_' + this.selectedPeriod;
     const cached = localStorage.getItem(cacheKey);
 
+    let hasInstantData = false;
+
     if (cached) {
       try {
         const data = JSON.parse(cached);
@@ -1317,13 +1320,45 @@ export class EvaluationManagerComponent implements OnInit {
           this.applyTeamEvaluationsData(data);
           this.onSearchChange();
           this.loading = false;
-        } else {
-          this.loading = true;
+          hasInstantData = true;
         }
-      } catch (e) {
-        this.loading = true;
+      } catch (e) {}
+    }
+
+    // If not cached for this specific period, but we already have team members in memory or in users cache,
+    // construct instant pending evaluations for the new month with ZERO lag (0ms)!
+    if (!hasInstantData) {
+      if (this.teamMembers && this.teamMembers.length > 0) {
+        const instantItems: TeamMemberEvaluation[] = this.teamMembers.map(m => ({
+          user: { ...m.user },
+          evaluation: null
+        }));
+        this.applyTeamEvaluationsData(instantItems);
+        this.onSearchChange();
+        this.loading = false;
+        hasInstantData = true;
+      } else {
+        const usersCache = localStorage.getItem('vermeg_users_cache');
+        if (usersCache) {
+          try {
+            const users = JSON.parse(usersCache);
+            const socUsers = users.filter((u: any) => u.role === 'soc' || u.role === 'support');
+            if (socUsers.length > 0) {
+              const instantItems: TeamMemberEvaluation[] = socUsers.map((u: any) => ({
+                user: { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email, role: u.role },
+                evaluation: null
+              }));
+              this.applyTeamEvaluationsData(instantItems);
+              this.onSearchChange();
+              this.loading = false;
+              hasInstantData = true;
+            }
+          } catch (e) {}
+        }
       }
-    } else {
+    }
+
+    if (!hasInstantData) {
       this.loading = true;
     }
 
@@ -1335,12 +1370,34 @@ export class EvaluationManagerComponent implements OnInit {
         try {
           localStorage.setItem(cacheKey, JSON.stringify(data));
         } catch (e) {}
+        this.cdr.detectChanges();
       },
       error: () => {
-        if (!cached) {
+        if (!hasInstantData) {
           this.errorMessage = 'Failed to load team evaluations.';
         }
         this.loading = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  preloadRecentPeriods() {
+    // Pre-load top 8 periods in background with slight staggering so all months are instant
+    if (!this.availablePeriods || !this.availablePeriods.length) return;
+    const periodsToPreload = this.availablePeriods.slice(0, 8);
+    periodsToPreload.forEach((period, idx) => {
+      const cacheKey = 'vermeg_evals_cache_manager_' + period;
+      if (!localStorage.getItem(cacheKey)) {
+        setTimeout(() => {
+          this.evalService.getTeamEvaluations(period, 'manager').subscribe({
+            next: (data) => {
+              try {
+                localStorage.setItem(cacheKey, JSON.stringify(data));
+              } catch (e) {}
+            }
+          });
+        }, idx * 100);
       }
     });
   }
@@ -1507,14 +1564,22 @@ export class EvaluationManagerComponent implements OnInit {
         item.evaluation = savedEv;
         this.savingId = null;
 
+        // Update local cache immediately so subsequent month switches remain fresh
+        const cacheKey = 'vermeg_evals_cache_manager_' + this.selectedPeriod;
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(this.teamMembers));
+        } catch (e) {}
+
         const pubStatus = savedEv.isPublished ? 'published & visible to SOC analyst' : 'saved as draft';
         this.successMessage = `Evaluation for ${item.user.firstName} ${item.user.lastName} ${pubStatus} (Global score: ${savedEv.globalScore}/5).`;
 
         setTimeout(() => { this.successMessage = ''; }, 4000);
+        this.cdr.detectChanges();
       },
       error: (err) => {
         this.savingId = null;
         this.errorMessage = err?.error?.message || 'Error saving evaluation.';
+        this.cdr.detectChanges();
       }
     });
   }
