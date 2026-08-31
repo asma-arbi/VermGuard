@@ -55,7 +55,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   selectedSocMember = '';
   socStartDate = '';
   socEndDate = '';
-  socMaxResult = 50;
+  socMaxResult = 2000;
   socTechTickets: any = null;
   socTechLoading = false;
   socTechError = '';

@@ -454,11 +454,6 @@ interface SlaAnalyticsData {
               <label class="form-label">📅 To (End Date) *</label>
               <input type="date" [(ngModel)]="slaEndDate" class="form-input">
             </div>
-
-            <div class="form-group">
-              <label class="form-label">🔢 Max Results Limit</label>
-              <input type="number" [(ngModel)]="slaMaxResult" min="1" max="5000" class="form-input" placeholder="2000">
-            </div>
           </div>
 
           <div class="search-actions">
